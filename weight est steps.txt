@@ -1,0 +1,33 @@
+Steps for Weight Estimation based on IEEE 9850524 and similar visual methods:
+
+To implement weight estimation from 2D/3D visual data (without a physical scale), we need to extract body volume/shape features rather than just length. Here is a breakdown of the steps and the information/data required.
+
+### Step 1: Feature Extraction (What we need from the image)
+1. **Skeletal Features (Already available via MediaPipe):**
+   - Shoulder width (distance between left and right shoulders).
+   - Hip width (distance between left and right hips).
+   - Ratios of shoulder width to height, and hip width to height.
+2. **Body Contour/Silhouette:**
+   - We need the area (in pixels) of the person's silhouette. This requires using a segmentation model (e.g., MediaPipe Selfie Segmentation or YOLOv8-seg) to separate the person from the background.
+   - Bounding box area ratio.
+
+### Step 2: Data Collection & Model Training
+Unlike height (which can be geometrically calculated using a pinhole camera model), weight is highly dependent on body composition and depth, which a single 2D image cannot geometrically provide. Therefore, we must use Machine Learning (Regression).
+
+**Information / Data Needed from You:**
+1. **A Dataset:** We need a dataset containing images of individuals along with their ground-truth Height, Weight, Gender, and (optionally) Age. (e.g., the VIPER dataset, or a custom collected dataset).
+2. **Pre-trained Regression Model:** If a dataset isn't available, we will need to train a regression model (like Random Forest, XGBoost, or a simple Neural Network) on body measurements vs. weight.
+
+### Step 3: Implementation Pipeline (Once Data is Ready)
+1. **Input:** Image + (Optional: Gender/Age for better accuracy).
+2. **Segmentation:** Extract the human silhouette to estimate body volume/area.
+3. **Keypoints:** Measure shoulder width, hip width, and estimated height.
+4. **Inference:** Feed these features (Height, Silhouette Area, Shoulder Width, Hip Width) into the trained regression model.
+5. **Output:** Estimated Weight in kg/lbs.
+
+### What I need from you to proceed with Weight Estimation:
+1. Do you have a dataset of images with known weights to train on?
+2. Or, would you like me to implement a pre-trained regression formula (like BMI-based approximations) which are less accurate but work out-of-the-box?
+3. Should we switch the YOLO model to a segmentation model (`yolov8n-seg.pt`) to extract silhouette area?
+
+Please let me know how you'd like to proceed with the weight estimation part!

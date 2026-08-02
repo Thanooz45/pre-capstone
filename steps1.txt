@@ -1,0 +1,182 @@
+================================================================
+  EXTERNAL SETUP STEPS — Human Height Estimator (Capstone)
+  Backend: FastAPI · YOLOv8 · MediaPipe · OpenCV · Pinhole Geometry
+================================================================
+Complete these steps MANUALLY before running the backend.
+
+----------------------------------------------------------------
+PART 1 — PYTHON ENVIRONMENT
+----------------------------------------------------------------
+
+STEP 1: Install Python 3.10 or 3.11
+  ▶  Download: https://www.python.org/downloads/
+  ▶  IMPORTANT: During install tick "Add Python to PATH"
+  ▶  Verify:   python --version
+
+  NOTE: Use Python 3.10 or 3.11.
+        MediaPipe has limited / broken support on Python 3.12+.
+
+STEP 2: Create a virtual environment
+  Open a terminal and run:
+
+    cd d:\capstone\backend
+    python -m venv venv
+
+STEP 3: Activate the virtual environment
+  Windows CMD:
+    venv\Scripts\activate.bat
+
+  Windows PowerShell:
+    venv\Scripts\Activate.ps1
+
+  (You should see "(venv)" in your prompt after activating.)
+
+  PowerShell execution-policy fix (if Activate.ps1 is blocked):
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+    then try again.
+
+STEP 4: Install all Python dependencies
+  (venv must be active)
+
+    pip install -r requirements.txt
+
+  This installs:
+    ✔ FastAPI + Uvicorn        — web server
+    ✔ python-multipart         — file upload support
+    ✔ Pydantic v2              — request/response models
+    ✔ OpenCV                   — image reading & annotation
+    ✔ NumPy                    — array operations
+    ✔ MediaPipe                — pose landmark detection
+    ✔ Ultralytics YOLOv8       — person detection
+    ✔ python-dotenv            — environment variable support
+
+STEP 5: Download YOLOv8 model weights (happens automatically)
+  On the FIRST run of the server, Ultralytics will automatically
+  download "yolov8n.pt" (~6 MB) from the internet.
+
+  ▶  Requires internet access on first launch.
+
+  To download manually in advance:
+    https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.pt
+  Place "yolov8n.pt" inside:  d:\capstone\backend\
+
+  To use a larger, more accurate model instead:
+    Change YOLO_MODEL_PATH in d:\capstone\backend\core\config.py
+    to "yolov8s.pt" or "yolov8m.pt" (also auto-downloaded on first use).
+
+STEP 6: (Windows only) Install Visual C++ Redistributable
+  Required by MediaPipe and OpenCV:
+    https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+STEP 7: (Optional — GPU acceleration)
+  Only if you have an NVIDIA GPU:
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+  CPU-only mode works fine for a capstone demo; skip this step otherwise.
+
+----------------------------------------------------------------
+PART 2 — RUNNING THE BACKEND
+----------------------------------------------------------------
+
+STEP 8: Start the FastAPI server
+  (Make sure venv is active)
+
+    cd d:\capstone\backend
+    venv\Scripts\activate.bat
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+  API is now live at:
+    http://localhost:8000          ← root health check
+    http://localhost:8000/health   ← liveness probe
+    http://localhost:8000/docs     ← Swagger UI (interactive API docs)
+    http://localhost:8000/redoc    ← ReDoc API docs
+    http://localhost:8000/api/models/info  ← loaded model info
+
+STEP 9: Test with the Swagger UI
+  Open: http://localhost:8000/docs
+  ▶  Click "POST /api/predict-height"
+  ▶  Click "Try it out"
+  ▶  Upload a full-body photo
+  ▶  Optionally set camera_height_cm and distance_cm
+  ▶  Click "Execute"
+  ▶  See estimated_height_cm, confidence_score, and annotated image
+
+STEP 10: Test with curl (optional)
+  curl -X POST http://localhost:8000/api/predict-height \
+    -F "file=@C:\path\to\photo.jpg" \
+    -F "camera_height_cm=140" \
+    -F "distance_cm=200"
+
+----------------------------------------------------------------
+PART 3 — BACKEND FILE STRUCTURE
+----------------------------------------------------------------
+
+backend/
+├── main.py                     ← FastAPI app entry point + CORS + lifespan
+├── requirements.txt            ← pip dependencies
+│
+├── core/
+│   ├── config.py               ← ALL configurable constants (camera, YOLO thresholds…)
+│   ├── models.py               ← Pydantic request/response schemas
+│   └── logging_config.py       ← Structured console logging setup
+│
+├── api/
+│   └── routes.py               ← POST /api/predict-height
+│                                  GET  /api/models/info
+│
+└── services/
+    └── height_estimator.py     ← Full 5-step AI pipeline:
+                                    Step 1: YOLOv8 → person bounding box
+                                    Step 2: MediaPipe Pose → head/heel keypoints
+                                    Step 3: Pixel height (head-top to heel)
+                                    Step 4: Pinhole camera geometry → cm
+                                    Step 5: OpenCV overlays (box, dots, line, label)
+
+----------------------------------------------------------------
+PART 4 — CONFIGURATION
+----------------------------------------------------------------
+
+All tunable parameters live in:  d:\capstone\backend\core\config.py
+
+Key settings:
+  YOLO_MODEL_PATH           = "yolov8n.pt"    ← change to yolov8s/m/l for accuracy
+  YOLO_CONF_THRESHOLD       = 0.4             ← detection confidence cutoff
+  DEFAULT_CAMERA_HEIGHT_CM  = 140.0           ← camera height above ground
+  DEFAULT_DISTANCE_CM       = 200.0           ← camera-to-person distance
+  VERTICAL_FOV_DEG          = 70.0            ← camera vertical field-of-view
+  MP_MODEL_COMPLEXITY       = 2               ← MediaPipe: 0=lite, 1=full, 2=heavy
+  HEAD_TOP_OFFSET_RATIO     = 0.10            ← head-top estimated 10% above nose
+  JPEG_QUALITY              = 88              ← output image compression
+
+----------------------------------------------------------------
+PART 5 — TROUBLESHOOTING
+----------------------------------------------------------------
+
+PROBLEM: "No module named 'mediapipe'"
+FIX:     venv\Scripts\activate.bat  then  pip install mediapipe
+
+PROBLEM: "No module named 'ultralytics'"
+FIX:     pip install ultralytics
+
+PROBLEM: MediaPipe install fails / crashes
+FIX:     Make sure you are using Python 3.10 or 3.11 (not 3.12).
+         Also install Visual C++ Redistributable (see Step 6).
+
+PROBLEM: "No person detected" error
+FIX:     Use a clear, well-lit, full-body photo.
+         Lower YOLO_CONF_THRESHOLD in config.py (e.g. to 0.25).
+         Avoid very small figures, heavy occlusion, or extreme angles.
+
+PROBLEM: Port 8000 already in use
+FIX:     uvicorn main:app --reload --port 8001
+
+PROBLEM: PowerShell blocks Activate.ps1
+FIX:     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+PROBLEM: Height estimate seems wrong
+FIX:     Set the correct camera_height_cm and distance_cm in the request.
+         Adjust VERTICAL_FOV_DEG in config.py to match your camera's spec.
+         Use a full-body photo with the person standing straight.
+
+================================================================
+END OF SETUP GUIDE
+================================================================

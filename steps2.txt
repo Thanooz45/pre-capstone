@@ -1,0 +1,100 @@
+================================================================
+  EXTERNAL SETUP STEPS — Human Height Estimator (Capstone)
+  Frontend: React · Vite · Tailwind CSS · Axios
+================================================================
+Complete these steps MANUALLY to run the web application UI.
+
+----------------------------------------------------------------
+PART 1 — NODE.JS ENVIRONMENT
+----------------------------------------------------------------
+
+STEP 1: Install Node.js
+  ▶  Download: https://nodejs.org/ (Use the LTS version, 20.x or 22.x)
+  ▶  IMPORTANT: The installer adds Node and npm to your PATH automatically.
+  ▶  Verify in a new terminal:
+       node -v
+       npm -v
+
+STEP 2: Open the Frontend directory
+  Open a terminal (Command Prompt or PowerShell) and run:
+
+    cd d:\capstone\frontend
+
+STEP 3: Install all Node dependencies
+  (Make sure you are in the frontend directory)
+
+    npm install
+
+  This installs:
+    ✔ React & ReactDOM
+    ✔ Vite (build tool and dev server)
+    ✔ Tailwind CSS (v4)
+    ✔ Axios (for API requests to the backend)
+    ✔ Lucide React (for icons)
+
+----------------------------------------------------------------
+PART 2 — RUNNING THE FRONTEND
+----------------------------------------------------------------
+
+STEP 4: Start the Vite Dev Server
+  Run the following command:
+
+    npm run dev
+
+  You should see output similar to:
+    VITE v8.x.x  ready in xxx ms
+    ➜  Local:   http://localhost:5173/
+    ➜  Network: use --host to expose
+
+STEP 5: Open the Web App
+  Open your web browser and navigate to:
+    http://localhost:5173/
+
+  ▶  You should see the "HeightVision" dashboard.
+  ▶  Make sure the Python FastAPI backend is ALSO running in a separate terminal
+     (see steps1.txt for backend instructions).
+
+----------------------------------------------------------------
+PART 3 — HOW TO USE THE DASHBOARD
+----------------------------------------------------------------
+
+1. Upload an Image: Drag and drop a full-body photo of a person into the dropzone, or click to browse.
+2. Adjust Settings: If you know the camera's height from the ground or the person's distance from the camera, update the inputs (Default: Camera=140cm, Distance=200cm).
+3. Analyze: Click the "Estimate height" button.
+4. Results: The app will send the image to the backend, YOLOv8 will find the person, MediaPipe will find the keypoints, and the geometric calculation will return the height. The processed image with overlays will appear on the right.
+
+----------------------------------------------------------------
+PART 4 — FRONTEND FILE STRUCTURE
+----------------------------------------------------------------
+
+frontend/
+├── index.html                  ← Main HTML entry point
+├── package.json                ← Dependencies and scripts
+├── vite.config.ts              ← Vite configuration
+│
+└── src/
+    ├── main.tsx                ← React DOM rendering entry point
+    ├── App.tsx                 ← Main UI component and state logic
+    ├── index.css               ← Premium custom styling and design system
+    │
+    └── services/
+        └── api.ts              ← Axios client for communicating with FastAPI
+
+----------------------------------------------------------------
+PART 5 — TROUBLESHOOTING
+----------------------------------------------------------------
+
+PROBLEM: "npm is not recognized as an internal or external command"
+FIX:     Install Node.js (Step 1) and restart your terminal.
+
+PROBLEM: The frontend says "Unable to reach the API."
+FIX:     1. Ensure the Python FastAPI backend is running (http://localhost:8000).
+         2. Check that there are no CORS errors in the browser console.
+         3. Make sure the backend terminal is not paused (sometimes clicking inside CMD pauses it; press Escape to unpause).
+
+PROBLEM: Changes to the code aren't showing up.
+FIX:     Vite has Hot Module Replacement (HMR). If it freezes, stop the server (Ctrl+C) and run `npm run dev` again.
+
+================================================================
+END OF SETUP GUIDE
+================================================================

@@ -1,0 +1,23 @@
+# =====================================================================
+#  Human Height Estimator — Backend Dependencies
+#  Install: pip install -r requirements.txt
+# =====================================================================
+
+# --- Web framework ---
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9   # required for File/Form uploads in FastAPI
+
+# --- Data validation ---
+pydantic>=2.7.0
+
+# --- Computer Vision ---
+opencv-python>=4.9.0
+numpy>=1.26.0
+
+# --- AI / ML ---
+mediapipe==0.10.21  # Last compatible release exposing the legacy mp.solutions Pose API
+ultralytics>=8.2.0        # YOLOv8 — auto-downloads yolov8n.pt on first run
+
+# --- Utilities ---
+python-dotenv>=1.0.0      # optional: load .env files for future env-based config

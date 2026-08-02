@@ -1,0 +1,29 @@
+# Dependencies & Virtual Environments
+node_modules/
+**/node_modules/
+venv/
+**/venv/
+.venv/
+**/env/
+
+# Model Files, Cache & Settings
+*.pt
+*.onnx
+*.weights
+.ultralytics/
+**/.ultralytics/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Build Outputs & Generated Files
+dist/
+**/dist/
+build/
+**/.next/
+
+# Environment Variables & Logs
+.env
+**/.env
+*.log
+.DS_Store

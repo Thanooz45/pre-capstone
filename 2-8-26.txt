@@ -1,0 +1,45 @@
+Act as a Senior Computer Vision & Web Developer. I am building a Capstone Project web application (React/HTML/Tailwind + Python/FastAPI or Node.js) for "Human Height Estimation from Images".
+
+Currently, my model is overestimating heights (showing ~260 cm instead of 173 cm / 5.8 ft) due to missing focal length/VFOV pinhole camera math and improper landmark boundary estimation.
+
+### 1. LANDMARK DETECTION & BOUNDARY LOGIC
+Implement MediaPipe Pose detection that extracts ALL relevant landmarks and computes boundary points:
+- Head Apex (Top Point):
+  * Use Nose (0), Left Ear (7), Right Ear (8), Left Shoulder (11), Right Shoulder (12).
+  * Calculate ear midpoint Y_ears and shoulder midpoint Y_shoulders.
+  * Estimate head height offset: h_head = |Y_shoulders - Y_ears| * 1.2
+  * Calculate Y_top = Y_ears - h_head.
+- Ground Contact (Bottom Point):
+  * Use Left Heel (29), Right Heel (30), Left Toe (31), Right Toe (32).
+  * Y_bottom = max(Y_heel_L, Y_heel_R, Y_toe_L, Y_toe_R).
+- Joint Skeleton Points: Track Hips (23, 24), Knees (25, 26), and Ankles (27, 28) to verify user posture (e.g., straight legs vs. bent knees).
+
+### 2. PINHOLE CAMERA MATHEMATICAL FORMULATION
+Replace fixed pixel scaling with true trigonometric pinhole projection:
+1. Focal Length (f_y in pixels):
+   f_y = (Image_Height / 2) / tan(radians(VFOV) / 2)   [Default VFOV = 55°]
+2. Angle Subtended relative to Optical Center:
+   dy_top = (Image_Height / 2) - Y_top
+   dy_bottom = (Image_Height / 2) - Y_bottom
+   alpha_top = arctan(dy_top / f_y)
+   alpha_bottom = arctan(dy_bottom / f_y)
+3. Physical Height Calculation:
+   H_top = Subject_Distance * tan(alpha_top)
+   H_bottom = Subject_Distance * tan(alpha_bottom)
+   Estimated_Height = H_top - H_bottom
+
+### 3. UI VISUALIZATION & INTERACTIVE FEATURES
+Build a responsive frontend dashboard with:
+1. Marked Points Visualization:
+   - Overlay a full skeleton pose wireframe on the image.
+   - Highlight Y_top (Red dot with horizontal marker line).
+   - Highlight Y_bottom (Green dot with horizontal marker line).
+   - Draw a bounding vertical height line connecting top to bottom with the calculated distance label.
+2. Interactive Zoom & Pan:
+   - Add image zoom controls (Zoom In, Zoom Out, Reset, Click-and-Drag Pan) on the result canvas so users can closely inspect head/foot landmark accuracy.
+3. Image Comparison View:
+   - Add a "Compare Images" tab or side-by-side mode allowing users to select and compare two processed images (e.g., Original vs. Processed, or Subject A vs. Subject B) with their respective height metrics and landmark markers.
+
+### DELIVERABLES
+- Complete Python processing code (OpenCV + MediaPipe + Numpy) that accepts image_path, camera_height, subject_distance, and vfov.
+- Frontend JavaScript / React code (or canvas manipulation logic) for landmark drawing, zooming/panning, and side-by-side picture comparison.
