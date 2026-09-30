@@ -12,8 +12,8 @@ from typing import List
 @dataclass
 class Settings:
     # ---- Project metadata ----
-    PROJECT_NAME: str = "Human Height Estimator API"
-    VERSION: str = "1.0.0"
+    PROJECT_NAME: str = "Human Height & Weight Estimator API"
+    VERSION: str = "1.1.0"
 
     # ---- CORS ----
     CORS_ORIGINS: List[str] = field(default_factory=lambda: [
@@ -39,6 +39,10 @@ class Settings:
     # ---- MediaPipe ----
     MP_MODEL_COMPLEXITY: int = 2              # 0=lite, 1=full, 2=heavy
     MP_MIN_DETECTION_CONF: float = 0.5
+
+    # ---- Weight regression ----
+    # The regressor is trained locally from dataset_of_height_weight_updated.
+    WEIGHT_MODEL_PATH: str = "models/weight_regressor.joblib"
 
     # ---- Output image quality ----
     JPEG_QUALITY: int = 88                    # JPEG encoding quality (0–100)

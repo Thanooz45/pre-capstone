@@ -12,8 +12,10 @@ python-multipart>=0.0.9   # required for File/Form uploads in FastAPI
 pydantic>=2.7.0
 
 # --- Computer Vision ---
-opencv-python>=4.9.0
+opencv-python-headless>=4.9.0
 numpy>=1.26.0
+scikit-learn>=1.4.0
+joblib>=1.3.0
 
 # --- AI / ML ---
 mediapipe==0.10.21  # Last compatible release exposing the legacy mp.solutions Pose API

@@ -1,0 +1,14 @@
+Person ID,Image 1 Name,Image 2 Name,Person Name,Weight (kg),Image 1 View,Image 2 View,Distance from Camera (cm),Camera Height from Ground (cm),Notes
+1,image_01.jpg,image_03.jpg,Siva,56,Side view,Front view,150,100,Complete pair
+2,image_02.jpg,image_05.jpg,Santhosh,87,Side view,Front view,150,100,Complete pair
+3,image_04.jpg,image_09.jpg,Balaji,55,Side view,Front view,150,100,Complete pair
+4,image_06.jpg,image_13.jpg,Kanth,46,Front view,Side view,150,100,Complete pair
+5,image_07.jpg,image_11.jpg,Bhargav,68,Side view,Front view,150,100,Complete pair
+6,image_08.jpg,image_16.jpg,Srinu,45,Front view,Side view,150,100,Complete pair
+7,image_10.jpg,image_12.jpg,Prasanth,51,Front view,Side view,150,100,Complete pair
+8,image_14.jpg,image_17.jpg,Subbu,76,Front view,Side view,150,100,Complete pair
+9,image_15.jpg,image_18.jpg,Shafi,65,Front view,Side view,150,100,Complete pair
+10,image_19.jpg,image_21.jpg,Manoj,50,Front view,Side view,150,100,Complete pair
+11,image_20.jpg,image_24.jpg,Eswar,64,Front view,Side view,150,100,Complete pair
+12,image_22.jpg,image_23.jpg,Hemanth,50,Front view,Side view,150,100,Complete pair
+13,image_25.jpg,image_26.jpg,Chethan,69,Front view,Side view,150,100,Complete pair

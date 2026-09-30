@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _yolo_model: Optional[YOLO] = None
 _pose: Optional[mp.solutions.pose.Pose] = None
+_segmenter: Optional[mp.solutions.selfie_segmentation.SelfieSegmentation] = None
 
 
 def load_models() -> None:
@@ -47,7 +48,7 @@ def load_models() -> None:
     Called once on application startup via FastAPI lifespan.
     Safe to call multiple times (no-op if already loaded).
     """
-    global _yolo_model, _pose
+    global _yolo_model, _pose, _segmenter
 
     if _yolo_model is None:
         logger.info("Loading YOLOv8 model: %s", settings.YOLO_MODEL_PATH)
@@ -64,11 +65,59 @@ def load_models() -> None:
         )
         logger.info("MediaPipe Pose loaded.")
 
+    if _segmenter is None:
+        # Segmentation supplies body-shape features for the weight regressor.
+        _segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=1)
+        logger.info("MediaPipe Selfie Segmentation loaded.")
+
 
 def _ensure_models_loaded() -> None:
     """Lazy-load if load_models() was not called at startup."""
-    if _yolo_model is None or _pose is None:
+    if _yolo_model is None or _pose is None or _segmenter is None:
         load_models()
+
+
+def _weight_features(
+    image_rgb: np.ndarray,
+    box: tuple[int, int, int, int],
+    landmarks: dict,
+    pixel_height: int,
+    estimated_height_cm: float,
+) -> dict:
+    """Create scale-independent body-shape features for weight regression.
+
+    A single image cannot directly observe body depth or composition.  These
+    features therefore describe visible proportions only and must be used as
+    an approximate, dataset-specific prediction.
+    """
+    x1, y1, x2, y2 = box
+    box_w, box_h = max(1, x2 - x1), max(1, y2 - y1)
+
+    def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
+        return float(math.dist(a, b))
+
+    shoulder_width = distance(landmarks["left_shoulder"], landmarks["right_shoulder"])
+    hip_width = distance(landmarks["left_hip"], landmarks["right_hip"])
+
+    segmentation = _segmenter.process(image_rgb).segmentation_mask
+    person_mask = segmentation[y1:y2, x1:x2] > 0.5
+    fill_ratio = float(person_mask.mean()) if person_mask.size else 0.0
+
+    # The widths at the chest/waist/hip levels capture silhouette shape.
+    def row_width(relative_y: float) -> float:
+        row = min(person_mask.shape[0] - 1, max(0, int(person_mask.shape[0] * relative_y)))
+        return float(person_mask[row].sum()) / max(1, pixel_height)
+
+    return {
+        "estimated_height_cm": round(float(estimated_height_cm), 4),
+        "shoulder_width_ratio": round(shoulder_width / pixel_height, 6),
+        "hip_width_ratio": round(hip_width / pixel_height, 6),
+        "silhouette_fill_ratio": round(fill_ratio, 6),
+        "silhouette_aspect_ratio": round(box_w / box_h, 6),
+        "chest_width_ratio": round(row_width(0.30), 6),
+        "waist_width_ratio": round(row_width(0.52), 6),
+        "lower_body_width_ratio": round(row_width(0.70), 6),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +437,9 @@ def estimate_height(
     # =========================================================
     estimated_cm = _pixel_to_real_height(float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm)
     feet, inches = _cm_to_feet_inches(estimated_cm)
+    weight_features = _weight_features(
+        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, estimated_cm
+    )
 
     # Confidence: weighted blend of YOLOv8 box confidence + nose visibility
     pose_visibility = float(lms[0].visibility)
@@ -433,4 +485,7 @@ def estimate_height(
         "distance_cm":         distance_cm,
         "posture_warning":     bool(posture_warning),
         "annotated_image_base64": annotated_b64,
+        # Private implementation data used by the local training/inference
+        # service. API routes remove it before returning a response.
+        "_weight_features": weight_features,
     }
