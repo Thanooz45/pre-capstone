@@ -11,8 +11,8 @@ export default function App() {
   const [preview, setPreview] = useState(null);
   const [previewSide, setPreviewSide] = useState(null);
   
-  const [cameraHeight, setCameraHeight] = useState(140);
-  const [distance, setDistance] = useState(200);
+  const [cameraHeight, setCameraHeight] = useState("140");
+  const [distance, setDistance] = useState("200");
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -225,12 +225,12 @@ export default function App() {
               <h2><Settings2 /> Camera & Settings</h2>
               
               <label>
-                Camera height <span>{cameraHeight} cm</span>
-                <input type="number" min="30" max="500" value={cameraHeight} onChange={(e) => setCameraHeight(Number(e.target.value))} />
+                Camera height <span>{cameraHeight || 0} cm</span>
+                <input type="number" min="30" max="500" value={cameraHeight} onChange={(e) => setCameraHeight(e.target.value === "" ? "" : String(Number(e.target.value)))} />
               </label>
               <label>
-                Subject distance <span>{distance} cm</span>
-                <input type="number" min="30" max="2000" value={distance} onChange={(e) => setDistance(Number(e.target.value))} />
+                Subject distance <span>{distance || 0} cm</span>
+                <input type="number" min="30" max="2000" value={distance} onChange={(e) => setDistance(e.target.value === "" ? "" : String(Number(e.target.value)))} />
               </label>
               
               <button onClick={analyze} disabled={loading} style={{ marginTop: '20px' }}>
@@ -316,13 +316,13 @@ export default function App() {
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                     Camera Height (cm)
                   </label>
-                  <input type="number" value={cameraHeight} onChange={(e) => setCameraHeight(Number(e.target.value))} required />
+                  <input type="number" value={cameraHeight} onChange={(e) => setCameraHeight(e.target.value === "" ? "" : String(Number(e.target.value)))} required />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                     Subject Distance (cm)
                   </label>
-                  <input type="number" value={distance} onChange={(e) => setDistance(Number(e.target.value))} required />
+                  <input type="number" value={distance} onChange={(e) => setDistance(e.target.value === "" ? "" : String(Number(e.target.value)))} required />
                 </div>
               </div>
 
