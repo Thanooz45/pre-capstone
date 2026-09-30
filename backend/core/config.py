@@ -37,7 +37,7 @@ class Settings:
     YOLO_CONF_THRESHOLD: float = 0.4          # min detection confidence
 
     # ---- MediaPipe ----
-    MP_MODEL_COMPLEXITY: int = 2              # 0=lite, 1=full, 2=heavy
+    MP_MODEL_COMPLEXITY: int = 0              # 0=lite, 1=full, 2=heavy (Set to 0 for 512MB RAM limit)
     MP_MIN_DETECTION_CONF: float = 0.5
 
     # ---- Weight regression ----
