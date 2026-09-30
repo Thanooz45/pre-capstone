@@ -255,6 +255,10 @@ export default function App() {
                     )}
                   </div>
 
+                  <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.95rem', color: '#6b7280' }}>
+                    <strong>Accuracy:</strong> {(result.confidence_score * 100).toFixed(1)}%
+                  </p>
+
                   <div className="height">
                     {result.estimated_height_cm} <small>cm</small>
                     <br />
