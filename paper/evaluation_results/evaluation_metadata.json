@@ -1,0 +1,78 @@
+{
+  "created_at_utc": "2026-11-09T16:59:21.419105+00:00",
+  "dataset_csv": "/Users/chintalapudithanooz/Documents/Projects/capstone/dataset_of_height_weight_updated/Output_data.csv",
+  "dataset_csv_sha256": "9fea690eb8e724b7fff2393c6dbb119bb3b1de1f7ebfa0b2229eb7d6e9e324ef",
+  "image_count": 36,
+  "group_count": 24,
+  "grouping_column": "Name",
+  "grouping_rule": "normalized Name values (identity not independently verified)",
+  "outer_folds": 5,
+  "inner_folds_max": 5,
+  "ridge_alpha_candidates": [
+    0.1,
+    1.0,
+    10.0,
+    100.0
+  ],
+  "random_forest": {
+    "n_estimators": 300,
+    "min_samples_leaf": 2,
+    "max_features": 0.8,
+    "random_state": 42
+  },
+  "feature_names": [
+    "estimated_height_cm",
+    "shoulder_width_ratio",
+    "hip_width_ratio",
+    "silhouette_fill_ratio",
+    "silhouette_aspect_ratio",
+    "chest_width_ratio",
+    "waist_width_ratio",
+    "lower_body_width_ratio"
+  ],
+  "versions": {
+    "python": "3.13.16",
+    "numpy": "2.5.4",
+    "scikit_learn": "1.9.1",
+    "opencv_python": "5.0.0.93",
+    "mediapipe": "1.1.1"
+  },
+  "metrics_group_aggregated": {
+    "raw_geometric_height_cm": {
+      "n_groups": 24,
+      "mae": 33.04969166666667,
+      "rmse": 33.71747231237896,
+      "r2": -18.381154936492717,
+      "bias": -33.04969166666667
+    },
+    "calibrated_height_cm": {
+      "n_groups": 24,
+      "mae": 6.854619092280409,
+      "rmse": 9.112571645425815,
+      "r2": -0.4156358295892071,
+      "bias": -1.5701431053842327
+    },
+    "training_fold_median_height_cm": {
+      "n_groups": 24,
+      "mae": 6.675416666666664,
+      "rmse": 7.881053493452931,
+      "r2": -0.058859128290768004,
+      "bias": 1.5295833333333289
+    },
+    "weight_kg": {
+      "n_groups": 24,
+      "mae": 8.953516163620323,
+      "rmse": 10.408469371635901,
+      "r2": 0.32727098002002186,
+      "bias": 0.5775799011944752
+    },
+    "training_fold_median_weight_kg": {
+      "n_groups": 24,
+      "mae": 11.125,
+      "rmse": 13.302568674257365,
+      "r2": -0.0988475511810174,
+      "bias": -0.041666666666666664
+    }
+  },
+  "predictions_csv": "grouped_predictions.csv"
+}

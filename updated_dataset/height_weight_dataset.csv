@@ -1,0 +1,23 @@
+Sno,Name,Height (cm),Height (ft-in),Weight (kg),Camera Height from Ground (cm),150 cm - Front,150 cm - Side,200 cm - Front,200 cm - Side
+1,Siva,158.5,5'2'',56.0,100,Siva_150F.jpg,Siva_150S.jpg,Siva_200F.jpg,Siva_200S.jpg
+2,Santhosh,174.0,5'9'',87.0,100,Santhosh_150F.jpg,Santhosh_150S.jpg,Santhosh_200F.jpg,Santhosh_200S.jpg
+3,Balaji,154.0,5'1'',55.0,100,Balaji_150F.jpg,Balaji_150S.jpg,,
+4,Kanth,152.4,5'0'',46.0,100,Kanth_150F.jpg,Kanth_150S.jpg,Kanth_200F.jpg,Kanth_200S.jpg
+5,Bhargav,173.74,5'8'',68.0,100,Bhargav_150F.jpg,Bhargav_150S.jpg,Bhargav_200F.jpg,Bhargav_200S.jpg
+6,Srinu,158.0,5'2'',45.0,100,Srinu_150F.jpg,Srinu_150S.jpg,Srinu_200F.jpg,Srinu_200S.jpg
+7,Prasanth,167.64,5'6'',51.0,100,Prasanth_150F.jpg,Prasanth_150S.jpg,Prasanth_200F.jpg,Prasanth_200S.jpg
+8,Subbu,158.0,5'2'',76.0,100,Subbu_150F.jpg,Subbu_150S.jpg,Subbu_200F.jpg,Subbu_200S.jpg
+9,Shafi,161.0,5'3'',65.0,100,Shafi_150F.jpg,Shafi_150S.jpg,Shafi_200F.jpg,Shafi_200S.jpg
+10,Manoj,157.0,5'2'',50.0,100,Manoj_150F.jpg,Manoj_150S.jpg,,
+11,Eswar,174.0,5'9'',64.0,100,Eswar_150F.jpg,Eswar_150S.jpg,Eswar_200F.jpg,Eswar_200S.jpg
+12,Hemanth,160.02,5'3'',50.0,100,Hemanth_150F.jpg,Hemanth_150S.jpg,Hemanth_200F.jpg,Hemanth_200S.jpg
+13,Chethan,167.0,5'6'',69.0,100,Chethan_150F.jpg,Chethan_150S.jpg,Chethan_200F.jpg,Chethan_200S.jpg
+14,Mahaboob,162.56,5'4'',74.0,100,Mahaboob_150F.jpg,Mahaboob_150S.jpg,Mahaboob_200F.jpg,Mahaboob_200S.jpg
+15,Tharun,169.0,5'7'',75.0,100,Tharun_150F.jpg,Tharun_150S.jpg,Tharun_200F.jpg,Tharun_200S.jpg
+16,Gopal,176.0,5'9'',81.0,100,Gopal_150F.jpg,Gopal_150S.jpg,Gopal_200F.jpg,Gopal_200S.jpg
+17,Venkey,180.34,5'11'',80.0,100,Venkey_150F.jpg,Venkey_150S.jpg,Venkey_200F.jpg,Venkey_200S.jpg
+18,Prem,170.0,5'7'',68.0,100,Prem_150F.jpg,Prem_150S.jpg,Prem_200F.jpg,Prem_200S.jpg
+19,Vijay,168.0,5'6'',65.0,100,Vijay_150F.jpg,Vijay_150S.jpg,Vijay_200F.jpg,Vijay_200S.jpg
+20,Pavan,170.18,5'7'',74.0,100,Pavan_150F.jpg,Pavan_150S.jpg,Pavan_200F.jpg,Pavan_200S.jpg
+21,Abdul,156.0,5'1'',67.0,100,Abdul_150F.jpg,Abdul_150S.jpg,Abdul_200F.jpg,Abdul_200S.jpg
+22,Afzal,164.0,5'5'',77.0,100,Afzal_150F.jpg,Afzal_150S.jpg,Afzal_200F.jpg,Afzal_200S.jpg

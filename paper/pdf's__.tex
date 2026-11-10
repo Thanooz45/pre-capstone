@@ -1,0 +1,334 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+\usepackage{balance}
+
+\hypersetup{hidelinks}
+\graphicspath{{figures/}}
+
+\title{A Camera-Geometry and Body-Proportion Approach for Image-Based Human Height and Weight Estimation}
+
+\author{
+\IEEEauthorblockN{Author Name 1, Author Name 2, Author Name 3}
+\IEEEauthorblockA{\textit{School/Department of Department Name}\\
+\textit{Institution Name}\\
+City, Country\\
+author email(s)}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper presents the design and implementation of a full-stack system for estimating human height and weight from full-body images. The system combines YOLOv8 person detection, MediaPipe Pose landmarks, pinhole-camera geometry, a learned height-calibration stage, and a Random Forest regressor based on visible body-proportion features. A React-based interface communicates with a FastAPI service and displays estimated measurements with annotated images. The supplied project archive contains two labelled datasets: 36 image-level records with height and weight labels, and 13 person-level records containing paired front/side images and weight labels. The implementation and training procedure are inspected from source code. However, the archive does not contain a verified held-out evaluation report or reproducible final metric log; therefore, this paper does not claim predictive accuracy, superiority over baselines, or generalization performance. Dataset statistics are reported descriptively, while the evaluation protocol and evidence required for quantitative claims are specified explicitly. The system is intended as a prototype for approximate visual measurement and requires subject-independent evaluation, camera-condition control, and broader data before real-world use.
+\end{abstract}
+
+\begin{IEEEkeywords}
+human height estimation, weight estimation, computer vision, YOLOv8, MediaPipe Pose, pinhole camera model, Random Forest regression, FastAPI
+\end{IEEEkeywords}
+
+\section{Introduction}
+Estimating body measurements from images is a computer-vision problem with potential applications in contactless measurement, interactive systems, and preliminary anthropometric assessment. Directly recovering metric height from a two-dimensional image is challenging because pixel coordinates depend on camera geometry, subject distance, camera orientation, posture, occlusion, and landmark localization. Weight estimation is more ambiguous: a single image does not directly reveal body depth, tissue composition, or other variables needed to determine mass.
+
+The supplied implementation addresses these two tasks differently. Height is first estimated from detected body boundaries using a pinhole-camera projection model. A saved regression calibration model can then compensate for systematic error observed in the labelled camera setup. Weight is predicted from calibrated height and seven visible body-proportion or silhouette features using a saved Random Forest regressor. An optional side-view image is processed independently and its weight prediction is averaged with the front-view prediction.
+
+The implementation includes a React/Vite frontend and a FastAPI backend. The backend loads YOLOv8, MediaPipe Pose, and MediaPipe Selfie Segmentation at startup, processes uploaded images, calculates measurements, and returns image overlays. This paper documents the implementation that is present in the supplied archive, rather than the earlier design notes alone.
+
+\subsection{Problem Statement}
+Given a full-body image and user-supplied camera height and subject distance, estimate the subject's height in centimetres and feet/inches. In addition, estimate weight in kilograms from visible body proportions and, optionally, combine estimates from front and side views. The system must return a visual explanation of the detected person and measurement landmarks.
+
+\subsection{Objectives and Contributions}
+The project objectives supported by the implementation are:
+\begin{itemize}
+  \item detect a dominant person in an uploaded image using YOLOv8;
+  \item extract body landmarks using MediaPipe Pose and estimate head-top and ground-contact pixel coordinates;
+  \item convert image coordinates into a metric height estimate using pinhole-camera geometry and camera metadata;
+  \item apply a learned height-calibration model and estimate weight with a Random Forest regressor using normalized body-shape features;
+  \item expose prediction and feedback endpoints through FastAPI and present annotated outputs in a React interface; and
+  \item document the supplied labelled data and identify the evaluation evidence still required for defensible performance claims.
+\end{itemize}
+The contribution is an implementation and integration of these components. The supplied files do not establish a novel computer-vision algorithm or validated clinical measurement method.
+
+\section{Related Work}
+The twelve studies supplied in the literature-review spreadsheet cover image-based prediction, geometric measurement, clinical anthropometry, 3D body reconstruction, multi-task learning, motion sensing, and broader surveys. They differ in target variable, input modality, dataset, and evaluation protocol; therefore, their reported errors should not be treated as a directly comparable leaderboard.
+
+Jin \textit{et al.} estimate body mass index (BMI) from a single image by combining explicitly designed anthropometric proportions with deep visual features learned by a ResNet-101 branch \cite{jin2023}. This work is relevant to extracting body-shape cues from images, but BMI is not the same target as weight in kilograms. Jiang and Guo likewise analyze body images, using body contours and joint points to derive five features before applying support-vector regression (SVR) and Gaussian-process regression (GPR) to estimate BMI \cite{jiang2019}. Their work supports the use of interpretable body proportions, while also highlighting the distinction between BMI prediction and direct weight estimation.
+
+Suwatkittiwong \textit{et al.} investigate height measurement using a known square template placed on the ground, using the template as a geometric scale reference \cite{suwat2018}. This is closely related to geometry-based measurement, but requires a known reference object in the scene. In a clinical setting, Melo \textit{et al.} compare formula-based estimates of height and weight with measured values for hospitalized adults \cite{melo2014}. Their equations rely on physical anthropometric measurements, so the method is not a raw-image-only pipeline.
+
+For infants, Shu \textit{et al.} study height and weight estimation from a single image, comparing CNN backbones for height and single-task and multi-task MobileNet-based methods for weight, with five-fold cross-validation \cite{shu2023}. The target population and image conditions differ from those of a general full-body adult system. Thakkar and Farid examine the feasibility of forensic height and weight estimation using fitted 3D human pose and body models \cite{thakkar2021}. Their analysis emphasizes the uncertainty caused by pose, view angle, image quality, and ambiguity between apparent image size and true physical scale.
+
+Altinigne \textit{et al.} propose estimating height and weight from unconstrained full-body images using a multi-task U-Net framework that predicts body silhouettes and skeletal joints alongside the measurements \cite{altinigne2020}. Unlike the current implementation, their method does not require user-provided camera distance and camera height. Han \textit{et al.} address height and weight estimation from facial images through multi-task learning, using ResNet-50 and auxiliary age-estimation and gender-classification tasks to support the main regression tasks \cite{han2020}. Their facial-image input and auxiliary labels differ from the current system's full-body front/side images and camera metadata.
+
+Maganti \textit{et al.} describe estimation from virtual visuals using OpenCV and MediaPipe/BlazePose landmarks, with interpupillary distance as a scale reference and regression methods for prediction \cite{maganti2022}. Their paper reports results on its own evaluation data; those results are not results of the present project. Rativa \textit{et al.} compare linear regression, SVR, GPR, and feed-forward neural-network regression using measured anthropometric variables from NHANES III and the U.S. Army Anthropometry Survey \cite{rativa2018}. This work informs the choice of regression approaches, but requires anthropometric measurements rather than extracting them directly from RGB images.
+
+Dong and Cai estimate height and weight from walking-related motion data captured by a smartphone and smart band. They combine motion features using Serial+CC fusion and compare several regression and sequence models \cite{dong2025}. This provides a non-image-based point of comparison; the current system instead uses front and side images with camera metadata. Finally, Jan \textit{et al.} survey body-weight-estimation methods, datasets, applications, and limitations across anthropometric equations, imaging, depth sensing, and learning-based methods \cite{jan2025}. As a survey, it synthesizes findings from different experimental settings rather than reporting one new model result.
+
+\subsection{Positioning of the Present Work}
+Across these studies, some approaches need reference objects, physical measurements, facial images, 3D reconstruction, or wearable motion data. The present implementation combines two full-body views with camera height and subject distance; estimates height through camera geometry followed by RidgeCV calibration; and predicts weight from calibrated height and visible body-proportion/silhouette features using a Random Forest regressor. This describes the implementation rather than proving superiority over prior methods. The project archive does not contain a verified subject-independent test report, so comparative performance claims are deferred until a reproducible evaluation is completed.
+
+\subsection{Research Gap}
+The reviewed papers use different target variables (including BMI rather than weight), populations, sensors, image types, and evaluation splits. These differences limit direct comparison of published error values. For the present project, the immediate research gap is the need for verified, subject-independent evaluation on the supplied data. Images from the same person must not occur in both training and testing partitions; height and weight errors should be reported separately, with the dataset and split described clearly. The paper therefore documents the pipeline and data available without inventing accuracy claims.
+
+\section{System Overview}
+Fig.~\ref{fig:architecture} summarizes the implemented service architecture. The frontend submits multipart image data and camera parameters to the API. The backend runs person detection, pose estimation, geometric measurement, feature extraction, height calibration, and weight regression. Annotated images and estimates are returned as JSON.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[scale=0.82, transform shape,
+  node distance=4mm and 5mm,
+  block/.style={draw, rounded corners, align=center, minimum height=8mm, text width=28mm, font=\footnotesize},
+  wide/.style={draw, rounded corners, align=center, minimum height=8mm, text width=36mm, font=\footnotesize},
+  arr/.style={-{Latex[length=2mm]}, thick}
+]
+\node[block] (ui) {React/Vite UI\\Image(s) + camera inputs};
+\node[block, right=of ui] (api) {FastAPI\\multipart endpoint};
+\node[block, right=of api] (yolo) {YOLOv8\\person detection};
+\node[block, right=of yolo] (pose) {MediaPipe Pose\\landmarks};
+\node[wide, below=of pose] (geom) {Pixel head/foot boundaries\\Pinhole-camera height};
+\node[wide, left=of geom] (feat) {MediaPipe segmentation\\body-proportion features};
+\node[block, left=of feat] (cal) {RidgeCV pipeline\\height calibration};
+\node[block, below=of cal] (rf) {Random Forest\\weight estimate};
+\node[wide, right=of geom] (out) {OpenCV annotations\\JSON response + estimates};
+\draw[arr] (ui)--(api);
+\draw[arr] (api)--(yolo);
+\draw[arr] (yolo)--(pose);
+\draw[arr] (pose)--(geom);
+\draw[arr] (pose)--(feat);
+\draw[arr] (geom)--(cal);
+\draw[arr] (feat)--(cal);
+\draw[arr] (cal)--(rf);
+\draw[arr] (geom)--(out);
+\draw[arr] (rf.east) -| (out.south);
+\draw[arr] (out.west) -| (ui.south);
+\end{tikzpicture}
+\caption{Architecture reconstructed from the supplied backend and frontend source code.}
+\label{fig:architecture}
+\end{figure*}
+
+\section{Methodology}
+\subsection{Person Detection}
+The backend loads the configured YOLOv8 model, with \texttt{yolov8n.pt} as the configured model path. Detections are filtered to the COCO person class (class identifier 0) and confidence threshold 0.4. If multiple people pass the filter, the implementation selects the bounding box with the largest area. This design targets the dominant person and may be unsuitable when the intended subject is not the largest person in the frame.
+
+\subsection{Pose Landmark Extraction and Pixel Boundaries}
+MediaPipe Pose is applied to a padded crop around the selected detection. The implementation converts normalized landmark coordinates into image coordinates and uses the left/right ears, shoulders, hips, knees, ankles, heels, and toes. The head-top estimate is formed by extrapolating above the midpoint of the ears by 1.2 times the absolute vertical difference between the ear midpoint and shoulder midpoint:
+\begin{equation}
+y_{\mathrm{top}} = y_{\mathrm{ears}} -
+1.2\left|y_{\mathrm{shoulders}}-y_{\mathrm{ears}}\right|.
+\label{eq:headtop}
+\end{equation}
+The bottom boundary is the largest image-coordinate $y$ among the left/right heel and toe landmarks:
+\begin{equation}
+y_{\mathrm{bottom}}=\max(y_{\mathrm{heel,L}},y_{\mathrm{heel,R}},
+y_{\mathrm{toe,L}},y_{\mathrm{toe,R}}).
+\label{eq:bottom}
+\end{equation}
+The vertical pixel span is
+\begin{equation}
+p_h = |y_{\mathrm{bottom}}-y_{\mathrm{top}}|.
+\label{eq:pixelheight}
+\end{equation}
+The pipeline rejects images when this span is below 10 pixels. A posture warning is raised when either computed knee angle is below $160^\circ$.
+
+\subsection{Pinhole-Camera Height Estimation}
+Let $H_I$ be the image height in pixels, $v$ the configured vertical field of view, and $f_y$ the vertical focal length in pixel units. The implementation computes
+\begin{equation}
+f_y = \frac{H_I/2}{\tan(v/2)}.
+\label{eq:focal}
+\end{equation}
+Angles relative to the image's optical centre are
+\begin{align}
+\alpha_t &= \tan^{-1}\left(\frac{H_I/2-y_{\mathrm{top}}}{f_y}\right),\\
+\alpha_b &= \tan^{-1}\left(\frac{H_I/2-y_{\mathrm{bottom}}}{f_y}\right).
+\end{align}
+Given subject distance $D$ and camera height $C$, the ray to the ground-contact point is used to infer camera pitch:
+\begin{align}
+\theta_b &= -\tan^{-1}(C/D),\\
+\theta &= \theta_b-\alpha_b,\\
+\phi_t &= \theta+\alpha_t.
+\end{align}
+The geometric height estimate is then
+\begin{equation}
+\widehat{H}_{g} = \max\{0,\ C+D\tan(\phi_t)\}.
+\label{eq:height}
+\end{equation}
+This equation follows the implementation in \texttt{height\_estimator.py}. It assumes the supplied camera-to-subject distance is appropriate for the subject and that the lowest detected heel/toe point represents ground contact. Camera pitch is inferred from that ground-contact assumption; camera height, distance, field of view, posture, and landmark accuracy therefore influence the result.
+
+\subsection{Body-Proportion Features}
+The implementation derives eight inputs for the regressors. Let $w_b$ and $h_b$ denote bounding-box width and height; $p_h$ is the detected pixel height. Shoulder and hip widths are Euclidean distances between the corresponding left/right landmarks. A segmentation mask is thresholded at 0.5 inside the person bounding box. The features are:
+\begin{align}
+x_1 &= \widehat{H}_{g}, \quad
+x_2 = \frac{w_{\mathrm{shoulder}}}{p_h}, \quad
+x_3 = \frac{w_{\mathrm{hip}}}{p_h},\\
+x_4 &= \mathrm{mean}(\mathrm{person\ mask}), \quad
+x_5 = \frac{w_b}{h_b},\\
+x_6 &= \frac{n_{0.30}}{p_h}, \quad
+x_7 = \frac{n_{0.52}}{p_h}, \quad
+x_8 = \frac{n_{0.70}}{p_h},
+\end{align}
+where $n_r$ is the number of foreground pixels in the mask row at relative vertical position $r$. The row widths approximate chest-, waist-, and lower-body-level silhouette widths. These are image-derived proxies and should not be interpreted as calibrated physical circumferences.
+
+\subsection{Height Calibration}
+The training script constructs a pipeline containing \texttt{StandardScaler} and \texttt{RidgeCV}, selecting regularization from $\{0.1,1,10,100\}$. It uses five-fold shuffled cross-validation with random seed 42 to generate out-of-fold height estimates and reports their mean absolute error. The model is then fitted on the available height-labelled feature rows and saved as \texttt{height\_calibrator.joblib}. At inference, the calibrated estimate replaces the geometric estimate for the final displayed height and for weight prediction. The archive contains the saved artifact, but not a training log that verifies the reported cross-validation result or the exact artifact provenance.
+
+\subsection{Weight Estimation}
+The weight model is a \texttt{RandomForestRegressor} configured with 300 trees, \texttt{min\_samples\_leaf=2}, \texttt{max\_features=0.8}, and random seed 42. It predicts weight from the eight features in the previous subsection. For training, the script reads both supplied CSV datasets. Dataset 1 contributes image-level observations with height and weight labels. Dataset 2 contributes each available front/side image as a separate observation with the person's weight label; the height feature is replaced with the calibration model's prediction. This expands the number of image observations but does not create additional independent people. The script requires at least ten usable Dataset 1 observations and prints skipped-image information. The current saved model's exact effective sample count cannot be established from the model file alone without reproducing the training run.
+
+At inference, the model predicts weight in kilograms. If the model exposes individual tree predictions, the code defines a spread as the larger of 4 kg and 1.5 times the standard deviation across tree predictions; otherwise, it uses 8 kg. The output interval is the prediction plus/minus this spread, clipped at zero on the lower end. This is an implementation-defined heuristic, not a statistically calibrated prediction interval.
+
+If a side-view image is supplied, the backend processes it through the same pipeline and averages the front- and side-view weight predictions. The corresponding reported range endpoints are averaged as well. The primary displayed height remains based on the primary uploaded image.
+
+\subsection{API and User Interface}
+The FastAPI service exposes \texttt{/api/predict-body}, \texttt{/api/submit-feedback}, and \texttt{/api/models/info}, as well as root and health-check endpoints. Prediction requests use multipart form data. Responses include estimated height, geometric height, confidence score, bounding box, pixel height, camera metadata, weight estimate, approximate weight range, and base64-encoded annotated images. OpenCV overlays include a bounding box, pose connections, measurement endpoints, and a height label. The frontend is implemented using React, Vite, Axios, and Lucide React.
+
+The feedback endpoint appends submitted labels and images to the first dataset and schedules retraining. This mechanism requires governance before deployment: consent, access controls, data-quality checks, duplicate management, and a reproducible versioned training process should be addressed.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm and 9mm,
+  process/.style={draw,rounded corners,align=center,text width=35mm,minimum height=8mm,font=\footnotesize},
+  wide/.style={draw,rounded corners,align=center,text width=43mm,minimum height=8mm,font=\footnotesize},
+  decision/.style={draw,diamond,aspect=2.1,align=center,inner sep=1.5pt,text width=24mm,font=\footnotesize},
+  terminal/.style={draw,rectangle,align=center,text width=35mm,minimum height=8mm,font=\footnotesize},
+  arr/.style={-{Latex[length=2mm]},thick}
+]
+\node[terminal] (input) {Input: front image, optional side image, and camera parameters};
+\node[decision,below=of input] (empty) {Input image empty?};
+\node[process,left=of empty] (error) {Return input-validation error};
+\node[process,below=of empty] (detect) {YOLOv8 person detection and largest-person selection};
+\node[wide,below=of detect] (pose) {MediaPipe Pose landmarks and segmentation mask};
+\node[process,below left=of pose,xshift=-8mm] (geometry) {Head/ground pixel boundaries and camera-geometry height};
+\node[process,below right=of pose,xshift=8mm] (features) {Body-proportion and silhouette feature extraction};
+\node[process,below=of geometry] (cal) {StandardScaler + RidgeCV height calibration};
+\node[wide,below right=of cal,xshift=12mm] (weight) {Random Forest weight prediction using calibrated height and body features};
+\node[terminal,below=of weight] (output) {Output: estimated height and weight, range, and annotated image};
+\draw[arr] (input)--(empty);
+\draw[arr] (empty)--node[right,font=\scriptsize]{No} (detect);
+\draw[arr] (empty)--node[above,font=\scriptsize]{Yes} (error);
+\draw[arr] (detect)--(pose);
+\draw[arr] (pose)--(geometry);
+\draw[arr] (pose)--(features);
+\draw[arr] (geometry)--(cal);
+\draw[arr] (cal.south) |- (weight.west);
+\draw[arr] (features.south) |- (weight.north);
+\draw[arr] (weight)--(output);
+\end{tikzpicture}
+\caption{Block diagram of the implemented image-based height and weight estimation pipeline. The validation branch rejects empty input; valid images pass through detection, landmark extraction, geometric height estimation, feature extraction, and regression.}
+\label{fig:blockdiagram}
+\end{figure*}
+
+\section{Dataset Description}
+The ZIP contains two CSV datasets with associated image folders and Excel versions. Table~\ref{tab:dataset} reports only descriptive statistics computed from the CSV files.
+
+\begin{table}[t]
+\caption{Descriptive Statistics of Supplied CSV Datasets}
+\label{tab:dataset}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.30\columnwidth}p{0.26\columnwidth}p{0.30\columnwidth}@{}}
+\toprule
+\textbf{Property} & \textbf{Dataset 1} & \textbf{Dataset 2}\\
+\midrule
+CSV records & 36 image rows & 13 person rows\\
+Image files & 36 & 26\\
+Distinct recorded names & 24 & 13\\
+Height labels & Available & Not present in CSV\\
+Weight labels & Available & Available\\
+Height range & 152.40--180.34 cm & Not reported\\
+Weight range & 45--90 kg & 45--87 kg\\
+Mean height & 165.39 cm & Not reported\\
+Mean weight & 65.44 kg & 60.15 kg\\
+Camera height & 100 cm for all rows & 100 cm for all rows\\
+Camera distance & 150 or 200 cm & 150 cm\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dataset 1 contains 36 labelled image observations, but 24 distinct recorded names and repeated individuals. At least ten names match exactly between the two CSVs (additional aliases may exist), and the training script combines image-level observations from both datasets for weight regression. The overlap means that the current training data should not be assumed to represent independent people. Dataset 2 contains 13 person-level entries with paired front/side images; its CSV contains weight labels and camera metadata, but no height labels. The README identifies the supplied images and user-provided weight values. No independent test dataset, demographic metadata beyond the recorded labels, or documented consent protocol is included in the archive. The data are small and repeated observations are present; therefore, image-level random splitting would risk optimistic estimates of generalization.
+
+\section{Experimental Setup and Evaluation}
+The source code defines the model configurations summarized in Table~\ref{tab:config}. These are configuration values from code, not evidence that a particular benchmark run used all of them unchanged.
+
+\begin{table}[t]
+\caption{Implementation Configuration Read from Source}
+\label{tab:config}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.54\columnwidth}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Configured value}\\
+\midrule
+Person detector & YOLOv8, \texttt{yolov8n.pt}\\
+Person class ID & 0\\
+Detection confidence threshold & 0.4\\
+MediaPipe Pose complexity & 0 (lite)\\
+Minimum pose detection confidence & 0.5\\
+Vertical field of view & $55^\circ$\\
+Default camera height & 140 cm\\
+Default subject distance & 200 cm\\
+Height calibration & StandardScaler + RidgeCV\\
+RidgeCV alpha candidates & 0.1, 1, 10, 100\\
+Calibration CV & 5-fold shuffled, seed 42\\
+Weight model & Random Forest regression\\
+Number of trees & 300\\
+Minimum samples per leaf & 2\\
+Max features & 0.8\\
+Weight model seed & 42\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Metrics}
+For ground-truth values $y_i$ and predictions $\hat{y}_i$ over $N$ independent test subjects, mean absolute error (MAE) is
+\begin{equation}
+\mathrm{MAE}=\frac{1}{N}\sum_{i=1}^{N}|y_i-\hat{y}_i|.
+\end{equation}
+Root mean squared error (RMSE) is
+\begin{equation}
+\mathrm{RMSE}=\sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i-\hat{y}_i)^2}.
+\end{equation}
+The coefficient of determination is
+\begin{equation}
+R^2=1-\frac{\sum_{i=1}^{N}(y_i-\hat{y}_i)^2}
+{\sum_{i=1}^{N}(y_i-\bar{y})^2},
+\end{equation}
+where $\bar{y}$ is the mean of the ground-truth values. Height errors should be reported in centimetres and weight errors in kilograms. Results should include subject-independent test performance, sample count, and preferably uncertainty intervals across repeated subject-level splits.
+
+\subsection{Available Results and Reproducibility Status}
+The archive contains saved model artifacts and a training script that prints a five-fold height-calibration MAE when executed. However, no verified console log, prediction-versus-ground-truth table, held-out test report, or final metric export was found among the supplied files. Therefore, this paper does not present a numerical predictive-performance table for the proposed system. The descriptive dataset statistics in Table~\ref{tab:dataset} are not model-performance results.
+
+A reproducible evaluation should group all images of a person into the same fold, compute all feature extraction and calibration steps without leakage, and reserve a subject-independent test set. Weight evaluation should compare predictions with the recorded labels, while height evaluation requires verified height ground truth for the exact images processed. The trained artifact should be regenerated from the supplied script, and the resulting log, skipped-image list, software versions, and test predictions should be retained.
+
+\section{Discussion}
+The design combines explicit geometric reasoning for height with supervised regression for calibration and weight estimation. The camera model exposes the role of camera height, distance, and field of view, while the annotated output makes landmark placement more inspectable than a numeric-only interface. Processing an optional second view may provide additional visible body-shape evidence, although the implemented averaging rule has not been shown to improve accuracy empirically.
+
+Several limitations follow directly from the implementation and available evidence. First, the dataset is small and includes repeated individuals and views. Second, height labels in Dataset 1 and weight labels in Dataset 2 have different structures, so the data should not be treated as a single homogeneous independent-sample dataset. Third, the weight model relies on visible silhouette proxies and cannot observe body depth or composition directly. Fourth, a weight interval based on tree prediction spread is not calibrated uncertainty. Fifth, geometric height depends on camera metadata and the assumption that the selected lowest foot landmark lies on the ground. Finally, the current confidence score blends detector confidence and nose visibility; it is not an empirically calibrated probability that the height or weight estimate is correct.
+
+The project should be described as a prototype for approximate image-based anthropometric estimation. It should not replace a calibrated measuring instrument or be used for safety-critical eligibility decisions without rigorous external validation.
+
+\section{Future Work}
+Future work should (1) collect a larger, consented, diverse dataset with documented measurement procedures; (2) establish subject-independent train/validation/test partitions; (3) report MAE, RMSE, $R^2$, bias, and error distributions for height and weight separately; (4) evaluate front-only, side-only, and two-view inference under identical test conditions; (5) assess sensitivity to camera distance, camera pitch, field of view, clothing, occlusion, and pose; (6) compare against simple, clearly specified baselines; (7) calibrate predictive intervals using held-out data; and (8) version the dataset, training scripts, model artifacts, and experiment logs. The feedback endpoint should be updated with consent handling and data validation before collecting additional samples.
+
+\section{Conclusion}
+This paper documents a full-stack human height and weight estimation prototype based on YOLOv8 person detection, MediaPipe pose and segmentation features, pinhole-camera geometry, RidgeCV height calibration, and Random Forest weight regression. The inspected archive provides source code, model artifacts, two small labelled datasets, and application code. It does not provide verified held-out performance metrics. Consequently, the paper reports implementation details and descriptive dataset statistics while treating predictive accuracy as an open experimental question. A subject-independent evaluation with reproducible logs and broader data is necessary before claims about reliability or real-world suitability can be supported.
+
+\section*{Acknowledgment}
+[Add acknowledgments, funding information, and supervisor details if applicable. Remove this section if not required.]
+
+\balance
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

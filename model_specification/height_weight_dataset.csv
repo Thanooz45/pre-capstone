@@ -1,0 +1,85 @@
+image_id, person_id , person_name, image_path              , view , subject_distance_cm, camera_height_cm, height_cm, weight_kg
+img_001 , person_001, Siva       , images/siva_150F.jpg    , front,                 150,              100,    158.5 ,      56.0
+img_002 , person_001, Siva       , images/siva_150S.jpg    , side ,                 150,              100,    158.5 ,      56.0
+img_003 , person_001, Siva       , images/siva_200F.jpg    , front,                 200,              100,    158.5 ,      56.0
+img_004 , person_001, Siva       , images/siva_200S.jpg    , side ,                 200,              100,    158.5 ,      56.0
+img_005 , person_002, Santhosh   , images/santhosh_150F.jpg, front,                 150,              100,    174.0 ,      87.0
+img_006 , person_002, Santhosh   , images/santhosh_150S.jpg, side ,                 150,              100,    174.0 ,      87.0
+img_007 , person_002, Santhosh   , images/santhosh_200F.jpg, front,                 200,              100,    174.0 ,      87.0
+img_008 , person_002, Santhosh   , images/santhosh_200S.jpg, side ,                 200,              100,    174.0 ,      87.0
+img_009 , person_003, Balaji     , images/balaji_150F.jpg  , front,                 150,              100,    154.0 ,      55.0
+img_010 , person_003, Balaji     , images/balaji_150S.jpg  , side ,                 150,              100,    154.0 ,      55.0
+img_011 , person_004, Kanth      , images/kanth_150F.jpg   , front,                 150,              100,    152.4 ,      46.0
+img_012 , person_004, Kanth      , images/kanth_150S.jpg   , side ,                 150,              100,    152.4 ,      46.0
+img_013 , person_004, Kanth      , images/kanth_200F.jpg   , front,                 200,              100,    152.4 ,      46.0
+img_014 , person_004, Kanth      , images/kanth_200S.jpg   , side ,                 200,              100,    152.4 ,      46.0
+img_015 , person_005, Bhargav    , images/bhargav_150F.jpg , front,                 150,              100,    173.74,      68.0
+img_016 , person_005, Bhargav    , images/bhargav_150S.jpg , side ,                 150,              100,    173.74,      68.0
+img_017 , person_005, Bhargav    , images/bhargav_200F.jpg , front,                 200,              100,    173.74,      68.0
+img_018 , person_005, Bhargav    , images/bhargav_200S.jpg , side ,                 200,              100,    173.74,      68.0
+img_019 , person_006, Srinu      , images/srinu_150F.jpg   , front,                 150,              100,    158.0 ,      45.0
+img_020 , person_006, Srinu      , images/srinu_150S.jpg   , side ,                 150,              100,    158.0 ,      45.0
+img_021 , person_006, Srinu      , images/srinu_200F.jpg   , front,                 200,              100,    158.0 ,      45.0
+img_022 , person_006, Srinu      , images/srinu_200S.jpg   , side ,                 200,              100,    158.0 ,      45.0
+img_023 , person_007, Prasanth   , images/prasanth_150F.jpg, front,                 150,              100,    167.64,      51.0
+img_024 , person_007, Prasanth   , images/prasanth_150S.jpg, side ,                 150,              100,    167.64,      51.0
+img_025 , person_007, Prasanth   , images/prasanth_200F.jpg, front,                 200,              100,    167.64,      51.0
+img_026 , person_007, Prasanth   , images/prasanth_200S.jpg, side ,                 200,              100,    167.64,      51.0
+img_027 , person_008, Subbu      , images/subbu_150F.jpg   , front,                 150,              100,    158.0 ,      76.0
+img_028 , person_008, Subbu      , images/subbu_150S.jpg   , side ,                 150,              100,    158.0 ,      76.0
+img_029 , person_008, Subbu      , images/subbu_200F.jpg   , front,                 200,              100,    158.0 ,      76.0
+img_030 , person_008, Subbu      , images/subbu_200S.jpg   , side ,                 200,              100,    158.0 ,      76.0
+img_031 , person_009, Shafi      , images/shafi_150F.jpg   , front,                 150,              100,    161.0 ,      65.0
+img_032 , person_009, Shafi      , images/shafi_150S.jpg   , side ,                 150,              100,    161.0 ,      65.0
+img_033 , person_009, Shafi      , images/shafi_200F.jpg   , front,                 200,              100,    161.0 ,      65.0
+img_034 , person_009, Shafi      , images/shafi_200S.jpg   , side ,                 200,              100,    161.0 ,      65.0
+img_035 , person_010, Manoj      , images/manoj_150F.jpg   , front,                 150,              100,    157.0 ,      50.0
+img_036 , person_010, Manoj      , images/manoj_150S.jpg   , side ,                 150,              100,    157.0 ,      50.0
+img_037 , person_011, Eswar      , images/eswar_150F.jpg   , front,                 150,              100,    174.0 ,      64.0
+img_038 , person_011, Eswar      , images/eswar_150S.jpg   , side ,                 150,              100,    174.0 ,      64.0
+img_039 , person_011, Eswar      , images/eswar_200F.jpg   , front,                 200,              100,    174.0 ,      64.0
+img_040 , person_011, Eswar      , images/eswar_200S.jpg   , side ,                 200,              100,    174.0 ,      64.0
+img_041 , person_012, Hemanth    , images/hemanth_150F.jpg , front,                 150,              100,    160.02,      50.0
+img_042 , person_012, Hemanth    , images/hemanth_150S.jpg , side ,                 150,              100,    160.02,      50.0
+img_043 , person_012, Hemanth    , images/hemanth_200F.jpg , front,                 200,              100,    160.02,      50.0
+img_044 , person_012, Hemanth    , images/hemanth_200S.jpg , side ,                 200,              100,    160.02,      50.0
+img_045 , person_013, Chethan    , images/chethan_150F.jpg , front,                 150,              100,    167.0 ,      69.0
+img_046 , person_013, Chethan    , images/chethan_150S.jpg , side ,                 150,              100,    167.0 ,      69.0
+img_047 , person_013, Chethan    , images/chethan_200F.jpg , front,                 200,              100,    167.0 ,      69.0
+img_048 , person_013, Chethan    , images/chethan_200S.jpg , side ,                 200,              100,    167.0 ,      69.0
+img_049 , person_014, Mahaboob   , images/mahaboob_150F.jpg, front,                 150,              100,    162.56,      74.0
+img_050 , person_014, Mahaboob   , images/mahaboob_150S.jpg, side ,                 150,              100,    162.56,      74.0
+img_051 , person_014, Mahaboob   , images/mahaboob_200F.jpg, front,                 200,              100,    162.56,      74.0
+img_052 , person_014, Mahaboob   , images/mahaboob_200S.jpg, side ,                 200,              100,    162.56,      74.0
+img_053 , person_015, Tharun     , images/tharun_150F.jpg  , front,                 150,              100,    169.0 ,      75.0
+img_054 , person_015, Tharun     , images/tharun_150S.jpg  , side ,                 150,              100,    169.0 ,      75.0
+img_055 , person_015, Tharun     , images/tharun_200F.jpg  , front,                 200,              100,    169.0 ,      75.0
+img_056 , person_015, Tharun     , images/tharun_200S.jpg  , side ,                 200,              100,    169.0 ,      75.0
+img_057 , person_016, Gopal      , images/gopal_150F.jpg   , front,                 150,              100,    176.0 ,      81.0
+img_058 , person_016, Gopal      , images/gopal_150S.jpg   , side ,                 150,              100,    176.0 ,      81.0
+img_059 , person_016, Gopal      , images/gopal_200F.jpg   , front,                 200,              100,    176.0 ,      81.0
+img_060 , person_016, Gopal      , images/gopal_200S.jpg   , side ,                 200,              100,    176.0 ,      81.0
+img_061 , person_017, Venkey     , images/venkey_150F.jpg  , front,                 150,              100,    180.34,      80.0
+img_062 , person_017, Venkey     , images/venkey_150S.jpg  , side ,                 150,              100,    180.34,      80.0
+img_063 , person_017, Venkey     , images/venkey_200F.jpg  , front,                 200,              100,    180.34,      80.0
+img_064 , person_017, Venkey     , images/venkey_200S.jpg  , side ,                 200,              100,    180.34,      80.0
+img_065 , person_018, Prem       , images/prem_150F.jpg    , front,                 150,              100,    170.0 ,      68.0
+img_066 , person_018, Prem       , images/prem_150S.jpg    , side ,                 150,              100,    170.0 ,      68.0
+img_067 , person_018, Prem       , images/prem_200F.jpg    , front,                 200,              100,    170.0 ,      68.0
+img_068 , person_018, Prem       , images/prem_200S.jpg    , side ,                 200,              100,    170.0 ,      68.0
+img_069 , person_019, Vijay      , images/vijay_150F.jpg   , front,                 150,              100,    168.0 ,      65.0
+img_070 , person_019, Vijay      , images/vijay_150S.jpg   , side ,                 150,              100,    168.0 ,      65.0
+img_071 , person_019, Vijay      , images/vijay_200F.jpg   , front,                 200,              100,    168.0 ,      65.0
+img_072 , person_019, Vijay      , images/vijay_200S.jpg   , side ,                 200,              100,    168.0 ,      65.0
+img_073 , person_020, Pavan      , images/pavan_150F.jpg   , front,                 150,              100,    170.18,      74.0
+img_074 , person_020, Pavan      , images/pavan_150S.jpg   , side ,                 150,              100,    170.18,      74.0
+img_075 , person_020, Pavan      , images/pavan_200F.jpg   , front,                 200,              100,    170.18,      74.0
+img_076 , person_020, Pavan      , images/pavan_200S.jpg   , side ,                 200,              100,    170.18,      74.0
+img_077 , person_021, Abdul      , images/abdul_150F.jpg   , front,                 150,              100,    156.0 ,      67.0
+img_078 , person_021, Abdul      , images/abdul_150S.jpg   , side ,                 150,              100,    156.0 ,      67.0
+img_079 , person_021, Abdul      , images/abdul_200F.jpg   , front,                 200,              100,    156.0 ,      67.0
+img_080 , person_021, Abdul      , images/abdul_200S.jpg   , side ,                 200,              100,    156.0 ,      67.0
+img_081 , person_022, Afzal      , images/afzal_150F.jpg   , front,                 150,              100,    164.0 ,      77.0
+img_082 , person_022, Afzal      , images/afzal_150S.jpg   , side ,                 150,              100,    164.0 ,      77.0
+img_083 , person_022, Afzal      , images/afzal_200F.jpg   , front,                 200,              100,    164.0 ,      77.0
+img_084 , person_022, Afzal      , images/afzal_200S.jpg   , side ,                 200,              100,    164.0 ,      77.0

@@ -208,6 +208,11 @@ input[type="number"]:focus, input[type="text"]:focus {
   background: white;
 }
 
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
 button {
   width: 100%;
   padding: 14px;
@@ -333,6 +338,183 @@ button:disabled {
   color: #166534;
 }
 
+.dataset-page {
+  display: grid;
+  gap: 20px;
+}
+
+.dataset-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--text-muted);
+}
+
+.dataset-search input {
+  margin-top: 0;
+}
+
+.dataset-count {
+  margin-top: 12px;
+  color: var(--text-muted);
+}
+
+.people-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.person-card {
+  min-width: 0;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.person-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.person-card h3 {
+  margin: 0 0 8px;
+  color: #111827;
+}
+
+.person-measurement-summary {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.person-edit-button {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.person-edit-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.person-edit-form label {
+  display: block;
+  color: #4b5563;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.person-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.person-edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.person-edit-actions button {
+  flex: 1;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.dataset-save-message {
+  margin-top: 0;
+}
+
+.person-measurements p,
+.lookup-person p {
+  margin: 4px 0;
+  color: #4b5563;
+}
+
+.person-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.person-image {
+  min-width: 0;
+}
+
+.person-image img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #f3f4f6;
+}
+
+.person-image small,
+.lookup-person small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.dataset-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+.dataset-pagination button {
+  width: auto;
+}
+
+.lookup-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: #4b5563;
+  background: #f9fafb;
+}
+
+.lookup-note {
+  margin-top: -12px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.lookup-person + .lookup-person {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.lookup-measurement + .lookup-measurement {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.lookup-person strong {
+  color: #166534;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -388,6 +570,12 @@ button:disabled {
     padding: 32px 24px;
   }
   .images-row {
+    flex-direction: column;
+  }
+  .person-edit-fields {
+    grid-template-columns: 1fr;
+  }
+  .person-edit-actions {
     flex-direction: column;
   }
 }

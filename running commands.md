@@ -8,27 +8,27 @@ This application consists of two parts: a Python FastAPI backend (for the AI pro
 
 The backend handles the OpenCV, YOLOv8, and MediaPipe processing.
 
-1. Open a new terminal.
+1. Open a new terminal at the project root.
 2. Navigate to the `backend` folder:
    ```bash
-   cd d:\capstone\backend
+   cd backend
    ```
 3. Activate the virtual environment:
    * **Windows:**
      ```bash
-     venv\Scripts\activate
+     .\venv\Scripts\Activate.ps1
      ```
    * **Mac/Linux:**
      ```bash
-     source venv/bin/activate
+     source .venv/bin/activate
      ```
 4. Install dependencies (if you haven't already):
    ```bash
-   pip install -r requirements.txt
+   python -m pip install -r requirements.txt
    ```
 5. Start the FastAPI server:
    ```bash
-   uvicorn main:app --reload
+   python -m uvicorn main:app --reload --port 8000
    ```
    *(The backend will start running on `http://127.0.0.1:8000`)*
 

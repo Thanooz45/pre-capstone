@@ -18,12 +18,17 @@ import base64
 import logging
 import math
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import cv2
 import mediapipe as mp
 import numpy as np
+from mediapipe.tasks.python import vision
 
 # Keep Ultralytics' runtime settings local to this project.  This avoids a
 # startup failure when the user's roaming AppData folder is not writable.
@@ -38,8 +43,50 @@ logger = logging.getLogger(__name__)
 # Module-level model handles (populated by load_models())
 # ---------------------------------------------------------------------------
 _yolo_model: Optional[YOLO] = None
-_pose: Optional[mp.solutions.pose.Pose] = None
-_segmenter: Optional[mp.solutions.selfie_segmentation.SelfieSegmentation] = None
+_pose: Optional[vision.PoseLandmarker] = None
+_segmenter: Optional[vision.ImageSegmenter] = None
+
+_POSE_MODEL_URLS = {
+    0: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+    1: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
+    2: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
+}
+_SEGMENTER_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/image_segmenter/"
+    "selfie_segmenter/float16/1/selfie_segmenter.tflite"
+)
+
+
+def _ensure_model_asset(filename: str, url: str) -> Path:
+    """Download a MediaPipe task model once, replacing partial files safely."""
+    model_path = Path(__file__).resolve().parents[1] / ".ultralytics" / "mediapipe" / filename
+    if model_path.is_file() and model_path.stat().st_size:
+        return model_path
+
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=model_path.parent,
+            prefix=f".{model_path.name}.",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            with urlopen(url, timeout=60) as response:
+                shutil.copyfileobj(response, temporary_file)
+
+        if not temporary_path.stat().st_size:
+            raise RuntimeError(f"Downloaded MediaPipe model is empty: {filename}")
+        temporary_path.replace(model_path)
+    except (OSError, URLError) as error:
+        raise RuntimeError(
+            f"Unable to download required MediaPipe model {filename} from {url}"
+        ) from error
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+    return model_path
 
 
 def load_models() -> None:
@@ -56,18 +103,43 @@ def load_models() -> None:
         logger.info("YOLOv8 loaded.")
 
     if _pose is None:
-        logger.info("Loading MediaPipe Pose (complexity=%d)…", settings.MP_MODEL_COMPLEXITY)
-        _pose = mp.solutions.pose.Pose(
-            static_image_mode=True,
-            model_complexity=settings.MP_MODEL_COMPLEXITY,
-            enable_segmentation=False,
-            min_detection_confidence=settings.MP_MIN_DETECTION_CONF,
+        pose_model_url = _POSE_MODEL_URLS.get(settings.MP_MODEL_COMPLEXITY)
+        if pose_model_url is None:
+            raise ValueError(
+                "MP_MODEL_COMPLEXITY must be 0 (lite), 1 (full), or 2 (heavy)"
+            )
+        pose_model_path = _ensure_model_asset(
+            f"pose_landmarker_{('lite', 'full', 'heavy')[settings.MP_MODEL_COMPLEXITY]}.task",
+            pose_model_url,
         )
-        logger.info("MediaPipe Pose loaded.")
+        logger.info("Loading MediaPipe Pose Landmarker (complexity=%d)…", settings.MP_MODEL_COMPLEXITY)
+        _pose = vision.PoseLandmarker.create_from_options(
+            vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=str(pose_model_path)
+                ),
+                running_mode=vision.RunningMode.IMAGE,
+                num_poses=1,
+                min_pose_detection_confidence=settings.MP_MIN_DETECTION_CONF,
+            )
+        )
+        logger.info("MediaPipe Pose Landmarker loaded.")
 
     if _segmenter is None:
         # Segmentation supplies body-shape features for the weight regressor.
-        _segmenter = mp.solutions.selfie_segmentation.SelfieSegmentation(model_selection=1)
+        segmenter_model_path = _ensure_model_asset(
+            "selfie_segmenter.tflite",
+            _SEGMENTER_MODEL_URL,
+        )
+        _segmenter = vision.ImageSegmenter.create_from_options(
+            vision.ImageSegmenterOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=str(segmenter_model_path)
+                ),
+                running_mode=vision.RunningMode.IMAGE,
+                output_confidence_masks=True,
+            )
+        )
         logger.info("MediaPipe Selfie Segmentation loaded.")
 
 
@@ -99,7 +171,12 @@ def _weight_features(
     shoulder_width = distance(landmarks["left_shoulder"], landmarks["right_shoulder"])
     hip_width = distance(landmarks["left_hip"], landmarks["right_hip"])
 
-    segmentation = _segmenter.process(image_rgb).segmentation_mask
+    segmentation_result = _segmenter.segment(
+        mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+    )
+    if not segmentation_result.confidence_masks:
+        raise RuntimeError("MediaPipe Selfie Segmentation did not return a person mask")
+    segmentation = segmentation_result.confidence_masks[0].numpy_view()[:, :, 0]
     person_mask = segmentation[y1:y2, x1:x2] > 0.5
     fill_ratio = float(person_mask.mean()) if person_mask.size else 0.0
 
@@ -340,7 +417,11 @@ def estimate_height(
     crop_rgb  = image_rgb[cy1:cy2, cx1:cx2]
     crop_h, crop_w = crop_rgb.shape[:2]
 
-    pose_result = _pose.process(crop_rgb)
+    pose_image = mp.Image(
+        image_format=mp.ImageFormat.SRGB,
+        data=np.ascontiguousarray(crop_rgb),
+    )
+    pose_result = _pose.detect(pose_image)
 
     if not pose_result.pose_landmarks:
         raise ValueError(
@@ -348,7 +429,7 @@ def estimate_height(
             "Try a well-lit photo where the full body is visible."
         )
 
-    lms = pose_result.pose_landmarks.landmark
+    lms = pose_result.pose_landmarks[0]
 
     # MediaPipe landmark indices used:
     #   0  = Nose

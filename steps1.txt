@@ -8,28 +8,28 @@ Complete these steps MANUALLY before running the backend.
 PART 1 — PYTHON ENVIRONMENT
 ----------------------------------------------------------------
 
-STEP 1: Install Python 3.10 or 3.11
+STEP 1: Install Python 3.13
   ▶  Download: https://www.python.org/downloads/
-  ▶  IMPORTANT: During install tick "Add Python to PATH"
-  ▶  Verify:   python --version
+  ▶  IMPORTANT: On Windows, enable "Add Python to PATH" in the installer.
+  ▶  Verify:   py -3.13 --version
 
-  NOTE: Use Python 3.10 or 3.11.
-        MediaPipe has limited / broken support on Python 3.12+.
+  NOTE: This project uses MediaPipe 1.1.1 and the MediaPipe Tasks API,
+        which have Python 3.13-compatible wheels.
 
 STEP 2: Create a virtual environment
   Open a terminal and run:
 
     cd d:\capstone\backend
-    python -m venv venv
+    py -3.13 -m venv .venv
 
 STEP 3: Activate the virtual environment
   Windows CMD:
-    venv\Scripts\activate.bat
+    .venv\Scripts\activate.bat
 
   Windows PowerShell:
-    venv\Scripts\Activate.ps1
+    .venv\Scripts\Activate.ps1
 
-  (You should see "(venv)" in your prompt after activating.)
+  (You should see "(.venv)" in your prompt after activating.)
 
   PowerShell execution-policy fix (if Activate.ps1 is blocked):
     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -38,7 +38,7 @@ STEP 3: Activate the virtual environment
 STEP 4: Install all Python dependencies
   (venv must be active)
 
-    pip install -r requirements.txt
+    python -m pip install -r requirements.txt
 
   This installs:
     ✔ FastAPI + Uvicorn        — web server
@@ -78,11 +78,11 @@ PART 2 — RUNNING THE BACKEND
 ----------------------------------------------------------------
 
 STEP 8: Start the FastAPI server
-  (Make sure venv is active)
+  (Make sure .venv is active)
 
     cd d:\capstone\backend
-    venv\Scripts\activate.bat
-    uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    .venv\Scripts\activate.bat
+    python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
   API is now live at:
     http://localhost:8000          ← root health check
@@ -152,13 +152,14 @@ PART 5 — TROUBLESHOOTING
 ----------------------------------------------------------------
 
 PROBLEM: "No module named 'mediapipe'"
-FIX:     venv\Scripts\activate.bat  then  pip install mediapipe
+FIX:     Activate .venv, then run: python -m pip install -r requirements.txt
 
 PROBLEM: "No module named 'ultralytics'"
-FIX:     pip install ultralytics
+FIX:     Activate .venv, then run: python -m pip install -r requirements.txt
 
 PROBLEM: MediaPipe install fails / crashes
-FIX:     Make sure you are using Python 3.10 or 3.11 (not 3.12).
+FIX:     Make sure you are using Python 3.13 and install dependencies from
+         backend/requirements.txt inside the activated virtual environment.
          Also install Visual C++ Redistributable (see Step 6).
 
 PROBLEM: "No person detected" error

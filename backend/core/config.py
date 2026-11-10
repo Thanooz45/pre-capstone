@@ -25,8 +25,8 @@ class Settings:
     ])
 
     # ---- Camera defaults ----
-    DEFAULT_CAMERA_HEIGHT_CM: float = 140.0   # camera mounted at 140 cm from ground
-    DEFAULT_DISTANCE_CM: float = 200.0         # person is 200 cm from the camera
+    DEFAULT_CAMERA_HEIGHT_CM: float = 100.0   # default camera height for new captures
+    DEFAULT_DISTANCE_CM: float = 150.0         # default subject distance for new captures
 
     # ---- Camera geometry ----
     VERTICAL_FOV_DEG: float = 55.0            # vertical field-of-view (typical webcam/phone)
@@ -41,7 +41,7 @@ class Settings:
     MP_MIN_DETECTION_CONF: float = 0.5
 
     # ---- Weight regression ----
-    # The regressor is trained locally from dataset_of_height_weight_updated.
+    # The regressor is trained locally from model_specification.
     WEIGHT_MODEL_PATH: str = "models/weight_regressor.joblib"
 
     # ---- Output image quality ----

@@ -47,6 +47,20 @@ def load_weight_model() -> bool:
     return True
 
 
+def reload_trained_models() -> None:
+    """Reload both dataset-trained models after a successful retraining run."""
+    global _weight_model, _height_model
+    weight_path = _model_path()
+    height_path = _height_model_path()
+    if not weight_path.is_file() or not height_path.is_file():
+        raise FileNotFoundError("Training did not produce both required model files.")
+    weight_model = joblib.load(weight_path)
+    height_model = joblib.load(height_path)
+    _weight_model = weight_model
+    _height_model = height_model
+    logger.info("Reloaded trained height and weight models.")
+
+
 def estimate_weight(features: dict) -> dict:
     """Predict kg from the height and visible body-proportion features."""
     if not load_weight_model():

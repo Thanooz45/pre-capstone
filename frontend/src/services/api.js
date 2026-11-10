@@ -21,9 +21,39 @@ export async function predictBody(
   return data;
 }
 
+export async function getDatasetPeople(search = "", limit = 50, offset = 0) {
+  const { data } = await api.get("/dataset/people", {
+    params: { search: search || undefined, limit, offset },
+  });
+  return data;
+}
+
+export async function updateDatasetPerson(currentName, name, height, weight) {
+  const { data } = await api.put("/dataset/people", {
+    current_name: currentName,
+    name,
+    height_cm: Number(height),
+    weight_kg: Number(weight),
+  });
+  return data;
+}
+
+export async function lookupDatasetPerson(file, personName = "") {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("person_name", personName);
+  const { data } = await api.post("/dataset/lookup", body);
+  return data;
+}
+
+export function datasetImageUrl(path) {
+  return `${api.defaults.baseURL}${path.replace(/^\/api/, "")}`;
+}
+
 export async function submitFeedback(
   file,
   fileSide,
+  personName,
   actualHeight,
   actualWeight,
   cameraHeight,
@@ -34,6 +64,7 @@ export async function submitFeedback(
   if (fileSide) {
     body.append("file_side", fileSide);
   }
+  body.append("person_name", personName);
   body.append("actual_height_cm", String(actualHeight));
   body.append("actual_weight_kg", String(actualWeight));
   body.append("camera_height_cm", String(cameraHeight));

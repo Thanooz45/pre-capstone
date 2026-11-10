@@ -46,7 +46,7 @@ class HeightResponse(BaseModel):
     camera_height_cm: float = Field(
         ...,
         description="Camera height used for calculation (echo of input).",
-        example=140.0,
+        example=100.0,
     )
     distance_cm: float = Field(
         ...,
@@ -81,3 +81,12 @@ class ErrorResponse(BaseModel):
     """Standard error payload."""
     error: str = Field(..., description="Human-readable error message.")
     detail: str | None = Field(None, description="Optional technical detail.")
+
+
+class DatasetPersonUpdate(BaseModel):
+    """Updated person labels applied to all of their model-specification images."""
+
+    current_name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=100)
+    height_cm: float = Field(..., gt=0, le=300)
+    weight_kg: float = Field(..., gt=0, le=500)
