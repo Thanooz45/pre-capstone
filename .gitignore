@@ -27,3 +27,12 @@ build/
 **/.env
 *.log
 .DS_Store
+
+steps1.txt
+steps2.txt
+weight est steps.txt
+specs1.md
+improvements.txt
+improvementssections.txt
+RUN_HEIGHT_WEIGHT.md
+2-8-26.txt
