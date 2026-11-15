@@ -12,10 +12,11 @@
 \usepackage{hyperref}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+\usepackage{placeins}
 \usepackage{balance}
 
 \hypersetup{hidelinks}
-\graphicspath{{figures/}}
+\setlength{\emergencystretch}{2em}
 
 \title{A Camera-Geometry and Body-Proportion Approach for Image-Based Human Height and Weight Estimation}
 
@@ -31,7 +32,7 @@ author email(s)}
 \maketitle
 
 \begin{abstract}
-This paper presents a full-stack prototype for estimating human height and weight from full-body images. The system combines YOLOv8 person detection, MediaPipe pose and segmentation, pinhole-camera geometry, Ridge height calibration, and Random Forest weight regression, with a React interface and FastAPI service. On an 84-image training cohort from 22 participant IDs, nested participant-grouped cross-validation achieved height MAE of 3.92 cm and weight MAE of 5.92 kg, compared with participant-level median baselines of 7.31 cm and 9.95 kg, respectively. A separate 36-image cohort grouped by normalized names (24 groups) produced 6.85 cm calibrated-height MAE and 8.95 kg weight MAE; in that cohort, the height median baseline was slightly better (6.68 cm), while the weight baseline MAE was 11.12 kg. These are cross-validation results on small project datasets, not external test performance; name-based grouping may miss aliases, and the two cohorts are not asserted to contain disjoint people. The prototype is not a validated measurement instrument.
+This paper presents a full-stack prototype for estimating human height and weight from full-body images. The system combines YOLOv8 person detection, MediaPipe pose and segmentation, pinhole-camera geometry, Ridge height calibration, and Random Forest weight regression, with a React interface and FastAPI service. On the merged cohort of 120 images assigned to 28 participant IDs, nested participant-grouped cross-validation achieved height MAE of 4.86 cm ($R^2=0.299$) and weight MAE of 6.53 kg ($R^2=0.579$), compared with participant-level median baseline MAEs of 7.03 cm and 9.79 kg. These are cross-validation results on a small training cohort, not external test performance. The prototype is not a validated measurement instrument.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -43,7 +44,7 @@ Estimating body measurements from images is a computer-vision problem with poten
 
 The supplied implementation addresses these two tasks differently. Height is first estimated from detected body boundaries using a pinhole-camera projection model. A saved regression calibration model can then compensate for systematic error observed in the labelled camera setup. Weight is predicted from calibrated height and seven visible body-proportion or silhouette features using a saved Random Forest regressor. An optional side-view image is processed independently and its weight prediction is averaged with the front-view prediction.
 
-The implementation includes a React/Vite frontend and a FastAPI backend. The backend loads YOLOv8, MediaPipe Pose, and MediaPipe Selfie Segmentation at startup, processes uploaded images, calculates measurements, and returns image overlays. This paper documents the implementation that is present in the supplied archive, rather than the earlier design notes alone.
+The implementation includes a React/Vite dashboard and a FastAPI backend. The backend loads YOLOv8, MediaPipe Pose, and MediaPipe Selfie Segmentation at startup, processes uploaded images, calculates measurements, and returns image overlays. The interface supports adjustable camera settings, optional side-view input, labelled data entry, and searching and editing saved subject records. This paper documents the implemented system and its evaluation rather than earlier design proposals.
 
 \subsection{Problem Statement}
 Given a full-body image and user-supplied camera height and subject distance, estimate the subject's height in centimetres and feet/inches. In addition, estimate weight in kilograms from visible body proportions and, optionally, combine estimates from front and side views. The system must return a visual explanation of the detected person and measurement landmarks.
@@ -55,10 +56,10 @@ The project objectives supported by the implementation are:
   \item extract body landmarks using MediaPipe Pose and estimate head-top and ground-contact pixel coordinates;
   \item convert image coordinates into a metric height estimate using pinhole-camera geometry and camera metadata;
   \item apply a learned height-calibration model and estimate weight with a Random Forest regressor using normalized body-shape features;
-  \item expose prediction and feedback endpoints through FastAPI and present annotated outputs in a React interface; and
+  \item expose prediction, feedback, and dataset-management services through FastAPI and present annotated outputs in a React interface; and
   \item evaluate the height and weight regressors with participant-grouped cross-validation, compare them with participant-level median baselines, and state the remaining limits on generalization.
 \end{itemize}
-The contribution is an implementation and integration of these components, together with nested participant-grouped evaluation on the model-training cohort and a separate name-grouped evaluation on an additional labelled image cohort. The supplied files do not establish a novel computer-vision algorithm or a validated clinical measurement method.
+The contribution is an implementation and integration of these components, together with nested participant-grouped evaluation on the merged 120-image training cohort. The available project materials do not establish a novel computer-vision algorithm or a validated clinical measurement method.
 
 \section{Related Work}
 The twelve studies supplied in the literature-review spreadsheet cover image-based prediction, geometric measurement, clinical anthropometry, 3D body reconstruction, multi-task learning, motion sensing, and broader surveys. They differ in target variable, input modality, dataset, and evaluation protocol; therefore, their reported errors should not be treated as a directly comparable leaderboard.
@@ -119,7 +120,7 @@ Fig.~\ref{fig:architecture} summarizes the implemented service architecture. The
 
 \section{Methodology}
 \subsection{Person Detection}
-The backend loads the configured YOLOv8 model, with \texttt{yolov8n.pt} as the configured model path. Detections are filtered to the COCO person class (class identifier 0) and confidence threshold 0.4. If multiple people pass the filter, the implementation selects the bounding box with the largest area. This design targets the dominant person and may be unsuitable when the intended subject is not the largest person in the frame.
+The backend uses the lightweight YOLOv8 nano model. Detections are filtered to the COCO person class (class identifier 0) and confidence threshold 0.4. If multiple people pass the filter, the implementation selects the bounding box with the largest area. This design targets the dominant person and may be unsuitable when the intended subject is not the largest person in the frame.
 
 \subsection{Pose Landmark Extraction and Pixel Boundaries}
 MediaPipe Pose is applied to a padded crop around the selected detection. The implementation converts normalized landmark coordinates into image coordinates and uses the left/right ears, shoulders, hips, knees, ankles, heels, and toes. The head-top estimate is formed by extrapolating above the midpoint of the ears by 1.2 times the absolute vertical difference between the ear midpoint and shoulder midpoint:
@@ -140,6 +141,45 @@ p_h = |y_{\mathrm{bottom}}-y_{\mathrm{top}}|.
 \label{eq:pixelheight}
 \end{equation}
 The pipeline rejects images when this span is below 10 pixels. A posture warning is raised when either computed knee angle is below $160^\circ$.
+
+Figure~\ref{fig:posebounds} is an original schematic of the landmarks and image-space boundaries used by the height pipeline.
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  x=0.8cm,y=0.7cm,
+  bone/.style={draw=gray!70,line width=1.2pt,line cap=round,line join=round},
+  posepoint/.style={circle,fill=teal!80!black,inner sep=1.6pt},
+  footpoint/.style={circle,fill=green!60!black,inner sep=1.7pt}
+]
+\draw[bone] (0,6.15) circle (0.34);
+\draw[bone] (-0.32,6.15)--(-0.72,5.55)--(0.72,5.55)--(0.32,6.15);
+\draw[bone] (-0.72,5.55)--(-1.02,4.45)--(-0.88,3.45);
+\draw[bone] (0.72,5.55)--(1.02,4.45)--(0.88,3.45);
+\draw[bone] (-0.72,5.55)--(-0.55,4.45)--(0.55,4.45)--(0.72,5.55);
+\draw[bone] (-0.55,4.45)--(-0.52,2.45)--(-0.55,0.55)--(-0.82,0.15);
+\draw[bone] (-0.55,0.55)--(-0.20,0.15);
+\draw[bone] (0.55,4.45)--(0.52,2.45)--(0.55,0.55)--(0.82,0.15);
+\draw[bone] (0.55,0.55)--(0.20,0.15);
+
+\foreach \x/\y in {-0.32/6.15,0.32/6.15,-0.72/5.55,0.72/5.55,
+                    -1.02/4.45,1.02/4.45,-0.88/3.45,0.88/3.45,
+                    -0.55/4.45,0.55/4.45,-0.52/2.45,0.52/2.45,
+                    -0.55/0.55,0.55/0.55}
+  \node[posepoint] at (\x,\y) {};
+\foreach \x in {-0.82,-0.20,0.20,0.82}
+  \node[footpoint] at (\x,0.15) {};
+
+\draw[red!75!black,thick] (-1.75,6.85)--(1.75,6.85);
+\fill[red!75!black] (0,6.85) circle (2.4pt);
+\draw[green!55!black,thick] (-1.75,0.15)--(1.75,0.15);
+\draw[blue!75!black,thick,<->] (2.05,0.15)--(2.05,6.85);
+\node[anchor=west,text=red!75!black] at (2.2,6.85) {\scriptsize estimated head top};
+\node[anchor=west,text=green!45!black] at (2.2,0.15) {\scriptsize ground-contact boundary};
+\node[rotate=90,fill=white,inner sep=1pt,text=blue!75!black] at (2.22,3.5) {\scriptsize pixel span};
+\end{tikzpicture}
+\caption{Original pose-landmark schematic. Teal points indicate pose joints, green points mark heel/toe contact candidates, and the red and blue annotations show the estimated top boundary and pixel-height span. This is a conceptual illustration, not a subject photograph or a model prediction.}
+\label{fig:posebounds}
+\end{figure*}
 
 \subsection{Pinhole-Camera Height Estimation}
 Let $H_I$ be the image height in pixels, $v$ the configured vertical field of view, and $f_y$ the vertical focal length in pixel units. The implementation computes
@@ -163,7 +203,7 @@ The geometric height estimate is then
 \widehat{H}_{g} = \max\{0,\ C+D\tan(\phi_t)\}.
 \label{eq:height}
 \end{equation}
-This equation follows the implementation in \texttt{height\_estimator.py}. It assumes the supplied camera-to-subject distance is appropriate for the subject and that the lowest detected heel/toe point represents ground contact. Camera pitch is inferred from that ground-contact assumption; camera height, distance, field of view, posture, and landmark accuracy therefore influence the result.
+This equation follows the implemented height-estimation pipeline. It assumes the supplied camera-to-subject distance is appropriate for the subject and that the lowest detected heel/toe point represents ground contact. Camera pitch is inferred from that ground-contact assumption; camera height, distance, field of view, posture, and landmark accuracy therefore influence the result.
 
 \subsection{Body-Proportion Features}
 The implementation derives eight inputs for the regressors. Let $w_b$ and $h_b$ denote bounding-box width and height; $p_h$ is the detected pixel height. Shoulder and hip widths are Euclidean distances between the corresponding left/right landmarks. A segmentation mask is thresholded at 0.5 inside the person bounding box. The features are:
@@ -183,16 +223,16 @@ where $n_r$ is the number of foreground pixels in the mask row at relative verti
 The originally supplied inference artifact is a \texttt{StandardScaler}--\texttt{RidgeCV} pipeline. In the revised training workflow and the grouped results in this paper, we use a \texttt{StandardScaler}--Ridge pipeline with alpha selected from $\{0.1,1,10,100\}$ by grouped cross-validation MAE within each training partition. Nested out-of-fold calibrated heights are used when fitting the weight model, avoiding in-sample height predictions as training features. The metrics evaluate this fold-specific refitting procedure, not a frozen external test of the originally supplied inference artifact. At application inference, the calibrated estimate replaces the geometric estimate for displayed height and weight prediction.
 
 \subsection{Weight Estimation}
-The evaluated weight model is a \texttt{RandomForestRegressor} configured with 300 trees, \texttt{min\_samples\_leaf=2}, \texttt{max\_features=0.8}, and random seed 42. It predicts weight from the eight features in the previous subsection. In each evaluation, the regressor is fit separately within each outer training fold using only that cohort; calibrated height inputs for training records are generated out of fold, and test folds hold out complete groups. The 36-image evaluation uses normalized names, while the separate training-cohort evaluation uses the \texttt{person\_id} field. Within each fold, multiple images per participant remain repeated training observations; final metrics average predictions within participant before scoring, so each group contributes equally to the reported metric.
+The evaluated weight model is a \texttt{RandomForestRegressor} configured with 300 trees, \texttt{min\_samples\_leaf=2}, \texttt{max\_features=0.8}, and random seed 42. It predicts weight from the eight features in the previous subsection. In each outer fold, the regressor is fit using only the training participants; calibrated height inputs for those records are generated out of fold, and the test fold holds out complete participants. Multiple images from one participant remain grouped together. Final metrics average predictions within participant before scoring, so each participant contributes equally.
 
 At inference, the model predicts weight in kilograms. If the model exposes individual tree predictions, the code defines a spread as the larger of 4 kg and 1.5 times the standard deviation across tree predictions; otherwise, it uses 8 kg. The output interval is the prediction plus/minus this spread, clipped at zero on the lower end. This is an implementation-defined heuristic, not a statistically calibrated prediction interval.
 
 If a side-view image is supplied, the backend processes it through the same pipeline and averages the front- and side-view weight predictions. The corresponding reported range endpoints are averaged as well. The primary displayed height remains based on the primary uploaded image.
 
 \subsection{API and User Interface}
-The FastAPI service exposes \texttt{/api/predict-body}, \texttt{/api/submit-feedback}, and \texttt{/api/models/info}, as well as root and health-check endpoints. Prediction requests use multipart form data. Responses include estimated height, geometric height, confidence score, bounding box, pixel height, camera metadata, weight estimate, approximate weight range, and base64-encoded annotated images. OpenCV overlays include a bounding box, pose connections, measurement endpoints, and a height label. The frontend is implemented using React, Vite, Axios, and Lucide React.
+The FastAPI service provides prediction, feedback, model-information, and health-check operations. Prediction requests accept image uploads and camera metadata. Responses include estimated and geometric height, confidence score, bounding box, pixel height, camera metadata, weight estimate, approximate weight range, and base64-encoded annotated images. OpenCV overlays include a bounding box, pose connections, measurement endpoints, and a height label. The React/Vite frontend uses Axios and Lucide React. Its dataset browser supports searching saved subject records and editing labels; name matches are not verified identity, and image lookup recognizes only an exact image file rather than a person in a different photograph. The feedback workflow adds labelled samples and schedules retraining. As the service has no sign-in protection, handling real subject images requires consent and access controls, and the service should remain on a trusted local network.
 
-The feedback endpoint appends submitted labels and images to the first dataset and schedules retraining. This mechanism requires governance before deployment: consent, access controls, data-quality checks, duplicate management, and a reproducible versioned training process should be addressed.
+Newly submitted labels and subject images are added to the training cohort and trigger retraining. Before sustained real-world collection, the process requires consent, access controls, data-quality checks, duplicate management, and reproducible model versioning.
 
 \begin{figure*}[t]
 \centering
@@ -230,38 +270,10 @@ The feedback endpoint appends submitted labels and images to the first dataset a
 \end{figure*}
 
 \section{Dataset Description}
-The supplied project contains multiple labelled datasets. Table~\ref{tab:dataset} summarizes the two image datasets used in the initial project collection. The model-training cohort in \texttt{model\_specification} is a separate 84-image CSV with participant IDs; it is described separately below and used for the newer training evaluation.
-
-\begin{table}[t]
-\caption{Descriptive Statistics of Supplied CSV Datasets}
-\label{tab:dataset}
-\centering
-\footnotesize
-\begin{tabular}{@{}p{0.30\columnwidth}p{0.26\columnwidth}p{0.30\columnwidth}@{}}
-\toprule
-\textbf{Property} & \textbf{Dataset 1} & \textbf{Dataset 2}\\
-\midrule
-CSV records & 36 image rows & 13 person rows\\
-Image files & 36 & 26\\
-Distinct recorded names & 24 & 13\\
-Height labels & Available & Not present in CSV\\
-Weight labels & Available & Available\\
-Height range & 152.40--180.34 cm & Not reported\\
-Weight range & 45--90 kg & 45--87 kg\\
-Mean height & 165.39 cm & Not reported\\
-Mean weight & 65.44 kg & 60.15 kg\\
-Camera height & 100 cm for all rows & 100 cm for all rows\\
-Camera distance & 150 or 200 cm & 150 cm\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Dataset 1 contains 36 labelled image observations and 24 distinct recorded names; repeated observations are present. The grouped evaluation uses the normalized name field to prevent records with matching names from crossing folds. This grouping may fail to merge aliases and should not be interpreted as verified identity resolution. At least ten names match exactly between the two initial CSVs (additional aliases may exist). Dataset 2 contains 13 person-level entries with paired front/side images; its CSV contains weight labels and camera metadata, but no height labels. The README identifies the supplied images and user-provided weight values. The current training workflow instead reads the separate \texttt{model\_specification} cohort. No external test dataset, demographic metadata beyond the recorded labels, or documented consent protocol is included in the archive. The data are small and repeated observations are present; therefore, image-level random splitting would risk optimistic estimates of generalization.
-
-The separate model-training cohort contains 84 image records from 22 \texttt{person\_id} groups, with height, weight, view, camera distance, and camera-height fields. Some participants contribute multiple views and camera distances; these images are grouped together during cross-validation. The project does not establish that these participant IDs are disjoint from people represented in the other CSV cohorts, so results from separate cohorts must not be interpreted as independent external validation.
+The merged model-training cohort contains 120 labelled full-body images assigned to 28 participant IDs. It combines the original 84-image front/side cohort with 36 additional images. A single consolidated image-level dataset supplies the application’s dataset browser, model training, and evaluation; duplicate photos in the other supplied collections were not added again. The additional images have no documented front/side labels and are marked as unknown view; their camera-distance and camera-height values are retained from their source records. When an imported name matched an existing participant, the existing height and weight labels were retained; unmatched labels were assigned new IDs, and no identity aliases were inferred. Participant IDs are used for grouped evaluation so images assigned to the same person are not split between training and test folds. Participant identity was not independently audited, and no external test cohort or documented consent protocol is included in the available project materials.
 
 \section{Experimental Setup and Evaluation}
-The source code defines the model configurations summarized in Table~\ref{tab:config}. These are configuration values from code, not evidence that a particular benchmark run used all of them unchanged.
+The implemented model configurations are summarized in Table~\ref{tab:config}. These are configuration values, not evidence that a particular benchmark run used all of them unchanged.
 
 \begin{table}[t]
 \caption{Implementation Configuration Read from Source}
@@ -272,14 +284,14 @@ The source code defines the model configurations summarized in Table~\ref{tab:co
 \toprule
 \textbf{Parameter} & \textbf{Configured value}\\
 \midrule
-Person detector & YOLOv8, \texttt{yolov8n.pt}\\
+Person detector & YOLOv8 nano\\
 Person class ID & 0\\
 Detection confidence threshold & 0.4\\
 MediaPipe Pose complexity & 0 (lite)\\
 Minimum pose detection confidence & 0.5\\
 Vertical field of view & $55^\circ$\\
-Default camera height & 140 cm\\
-Default subject distance & 200 cm\\
+Default camera height & 100 cm\\
+Default subject distance & 150 cm\\
 Height calibration & Evaluation: StandardScaler + Ridge; original artifact: RidgeCV\\
 Ridge alpha candidates & 0.1, 1, 10, 100\\
 Calibration CV & GroupKFold, up to 5 folds; alpha selected by grouped MAE\\
@@ -310,57 +322,127 @@ where $\bar{y}$ is the mean of the ground-truth values. Signed bias is
 \begin{equation}
 \mathrm{Bias}=\frac{1}{N}\sum_{i=1}^{N}(\hat{y}_i-y_i),
 \end{equation}
-so a negative value indicates underestimation. Height errors are reported in centimetres and weight errors in kilograms. Here, each evaluation unit is a normalized-name group; this grouping is a proxy for participant identity, not independently verified identity resolution. External test performance and uncertainty intervals remain future requirements.
+so a negative value indicates underestimation. Height errors are reported in centimetres and weight errors in kilograms. Each evaluation unit is a participant, with image-level labels and predictions averaged within that participant. External test performance and uncertainty intervals remain future requirements.
 
-\subsection{Grouped Cross-Validation Results}
-We ran the evaluation script in \texttt{paper/evaluate\_grouped.py} against the 36 image records in Dataset 1. The script groups by \texttt{participant\_id} when that column exists; for the supplied CSV, which has no such column, it normalizes participant names by trimming whitespace and applying case-folding. Five-fold \texttt{GroupKFold} produced 24 name groups. In each training partition, Ridge regularization was selected from $\{0.1,1,10,100\}$ by grouped cross-validation using MAE. For weight, nested grouped folds generated out-of-fold training-set height estimates for the Random Forest, while each outer test fold used a calibrator tuned and fitted only on its corresponding training partition. Fold-specific training medians served as height and weight baselines. Metrics were computed after averaging each participant-name group's labels and out-of-fold predictions, so $n=24$ denotes name groups rather than image rows.
+\subsection{Nested Participant-Grouped Evaluation}
+We evaluated all 120 image records assigned to 28 participant IDs using nested grouped cross-validation. Outer folds hold out complete participant groups. Within each outer training fold, Ridge regularization is selected by grouped MAE, and out-of-fold calibrated heights are generated for fitting the Random Forest weight model. Predictions and ground-truth labels are averaged within each held-out group before scoring. The training-fold median of participant-level labels is used as the baseline. This is cross-validation on the training cohort, not a held-out external test.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  modelbar/.style={draw=blue!65!black,fill=blue!65},
+  baselinebar/.style={draw=orange!80!black,fill=orange!80!black}
+]
+\begin{scope}[x=1.2cm,y=0.36cm]
+\node[font=\small\bfseries] at (1.45,11) {Height MAE (cm)};
+\draw[->] (0,0)--(2.3,0);
+\draw[->] (0,0)--(0,8.5);
+\foreach \y in {0,2,4,6,8} {
+  \draw[gray!25] (0,\y)--(2.2,\y);
+  \node[anchor=east] at (-0.08,\y) {\y};
+}
+\draw[modelbar] (1.02,0) rectangle (1.38,4.86);
+\draw[baselinebar] (1.52,0) rectangle (1.88,7.03);
+\node[above left,font=\tiny] at (1.20,4.86) {4.86};
+\node[above right,font=\tiny] at (1.70,7.03) {7.03};
+\node[align=center,anchor=north] at (1.45,-0.15) {120 images\\28 participant IDs};
+\end{scope}
+\begin{scope}[xshift=7.2cm,x=1.2cm,y=0.36cm]
+\node[font=\small\bfseries] at (1.45,11) {Weight MAE (kg)};
+\draw[->] (0,0)--(2.3,0);
+\draw[->] (0,0)--(0,12.5);
+\foreach \y in {0,3,6,9,12} {
+  \draw[gray!25] (0,\y)--(2.2,\y);
+  \node[anchor=east] at (-0.08,\y) {\y};
+}
+\draw[modelbar] (1.02,0) rectangle (1.38,6.53);
+\draw[baselinebar] (1.52,0) rectangle (1.88,9.79);
+\node[above left,font=\tiny] at (1.20,6.53) {6.53};
+\node[above right,font=\tiny] at (1.70,9.79) {9.79};
+\node[align=center,anchor=north] at (1.45,-0.15) {120 images\\28 participant IDs};
+\end{scope}
+\end{tikzpicture}
+\caption{Nested participant-grouped out-of-fold MAE for the merged 120-image training cohort. Blue bars show the model and orange bars show the training-fold median baseline.}
+\label{fig:maecomparison}
+\end{figure*}
+
+The evaluation is reproducible with the participant-grouped training workflow. A follow-up should preserve fold assignments, per-record predictions, software versions, and evaluation logs, then validate on a prospectively collected, consented cohort with a locked test protocol.
 
 \begin{table*}[t]
-\caption{Out-of-Fold Results on the Supplied 36-Image Cohort}
-\label{tab:groupedresults}
-\centering
-\footnotesize
-\begin{tabular}{@{}p{0.30\textwidth}ccccc@{}}
-\toprule
-\textbf{Evaluation target} & \textbf{$n$ (groups)} & \textbf{MAE} & \textbf{RMSE} & \textbf{$R^2$} & \textbf{Bias}\\
-\midrule
-Raw geometric height (cm) & 24 & 33.05 cm & 33.72 cm & $-18.381$ & $-33.05$ cm\\
-Calibrated height (nested grouped OOF) & 24 & 6.85 cm & 9.11 cm & $-0.416$ & $-1.57$ cm\\
-Training-fold median height baseline & 24 & 6.68 cm & 7.88 cm & $-0.059$ & $1.53$ cm\\
-Weight (nested grouped OOF) & 24 & 8.95 kg & 10.41 kg & $0.327$ & $0.58$ kg\\
-Training-fold median weight baseline & 24 & 11.12 kg & 13.30 kg & $-0.099$ & $-0.04$ kg\\
-\bottomrule
-\end{tabular}
-\end{table*}
-
-The raw geometric estimate substantially underestimated height in this cohort (bias $-33.05$ cm). Nested, group-aware Ridge calibration achieved 6.85 cm height MAE, slightly worse than the fold-specific median baseline at 6.68 cm; both methods had negative grouped $R^2$. The weight regressor's MAE was 8.95 kg, 2.17 kg lower than the fold-specific median baseline; this is a preliminary within-cohort comparison, not evidence of statistically significant improvement. All metrics are regression errors, not classification accuracy. The grouped scores are more conservative than an image-level split but remain vulnerable to name aliases, small-sample variability, and dataset-specific camera and demographic conditions. No independent external test set was available.
-
-The results can be regenerated from the project root with \texttt{cd backend \&\& .venv/bin/python ../paper/evaluate\_grouped.py}. A publication-grade follow-up should preserve the fold assignments, per-record predictions, software versions, and evaluation log; resolve participant identity across aliases; and validate on a prospectively collected, consented cohort with a locked test protocol.
-
-\subsection{Nested Evaluation on the Model-Training Cohort}
-We additionally evaluated the data used by the training workflow: 84 images from 22 participant IDs in \texttt{model\_specification/height\_weight\_dataset.csv}. The training routine used nested \texttt{GroupKFold} splits, with Ridge alpha selected by grouped MAE within each training partition. The Random Forest received out-of-fold calibrated heights for its training rows. Predictions were averaged within each held-out participant before calculating MAE; the baseline is the median of participant-averaged training labels. On this cohort, height MAE was 3.92 cm versus 7.31 cm for the baseline, and weight MAE was 5.92 kg versus 9.95 kg for the baseline.
-
-\begin{table}[t]
-\caption{Nested Participant-Grouped Cross-Validation on the Training Cohort}
+\caption{Nested Participant-Grouped Cross-Validation on the Merged 120-Image Cohort ($n=28$ Participant IDs)}
 \label{tab:trainingcohort}
 \centering
 \footnotesize
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}p{0.36\textwidth}ccccc@{}}
 \toprule
-\textbf{Target} & \textbf{Participants} & \textbf{Model MAE} & \textbf{Median baseline MAE}\\
+\textbf{Evaluation target} & \textbf{$n$} & \textbf{MAE} & \textbf{RMSE} & \textbf{$R^2$} & \textbf{Bias}\\
 \midrule
-Height (cm) & 22 & 3.92 cm & 7.31 cm\\
-Weight (kg) & 22 & 5.92 kg & 9.95 kg\\
+Raw geometric height (cm) & 28 & 32.33 & 32.97 & $-18.608$ & $-32.33$\\
+Calibrated height (cm) & 28 & 4.86 & 6.23 & $0.299$ & $-0.89$\\
+Training-fold median height baseline (cm) & 28 & 7.03 & 8.20 & $-0.213$ & $0.81$\\
+Weight model (kg) & 28 & 6.53 & 7.80 & $0.579$ & $-0.27$\\
+Training-fold median weight baseline (kg) & 28 & 9.79 & 12.07 & $-0.008$ & $0.79$\\
 \bottomrule
 \end{tabular}
-\end{table}
+\vspace{2pt}
 
-These results are more encouraging than those on the separate name-grouped cohort, but the cohorts differ in composition, views, and identity metadata. The 84-image result is cross-validation on the training cohort, not a held-out external test; it therefore does not establish expected performance on new users. Candidate artifacts were saved separately from the active application models, and the reported fold metrics describe the evaluation procedure rather than a locked evaluation of those candidate files as deployed. The training evaluation can be reproduced from the project root with \texttt{cd backend \&\& .venv/bin/python -m scripts.train\_weight\_model --model-output-dir ../paper/evaluation\_results/candidate\_models}.
+\begin{minipage}{0.94\textwidth}
+\scriptsize MAE, RMSE, and bias use centimetres for height and kilograms for weight. $R^2$ is computed over participant-averaged out-of-fold predictions.
+\end{minipage}
+\end{table*}
+
+Figure~\ref{fig:weightpredictions} compares measured weight with nested out-of-fold predictions after averaging image-level values within each participant ID. The horizontal positions are anonymized group indices.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[x=0.42cm,y=0.08cm,font=\scriptsize]
+\draw[->] (0,40)--(0,98);
+\draw[->] (0,40)--(29,40);
+\foreach \y in {40,50,60,70,80,90} {
+  \draw[gray!25] (0,\y)--(29,\y);
+  \node[anchor=east] at (-0.35,\y) {\y};
+}
+\foreach \x in {1,5,9,13,17,21,25} {
+  \draw (\x,40)--(\x,39.2);
+  \node[anchor=north] at (\x,38.5) {\x};
+}
+\draw (28,40)--(28,39.2);
+\node[anchor=north] at (28,38.5) {28};
+\node[rotate=90] at (-3.4,68) {Mean weight (kg)};
+\node[anchor=north] at (14.5,32) {Held-out participant group};
+\draw[gray!55,fill=white,rounded corners] (1,97) rectangle (9,89);
+\node[rectangle,draw=red!80!black,fill=red!75,minimum size=4pt,inner sep=0pt] at (1.7,94.5) {};
+\node[anchor=west] at (2.3,94.5) {Measured};
+\node[circle,draw=green!60!black,fill=green!60,minimum size=4pt,inner sep=0pt] at (1.7,91.5) {};
+\node[anchor=west] at (2.3,91.5) {Predicted (out-of-fold)};
+\foreach \x/\y in {
+1/56.00,2/87.00,3/55.00,4/46.00,5/68.00,6/45.00,7/51.00,
+8/76.00,9/65.00,10/50.00,11/64.00,12/50.00,13/69.00,14/74.00,
+15/75.00,16/81.00,17/80.00,18/68.00,19/65.00,20/74.00,21/67.00,
+22/77.00,23/60.00,24/68.00,25/90.00,26/81.00,27/76.00,28/61.00
+} {
+  \node[rectangle,draw=red!80!black,fill=red!75,minimum size=4pt,inner sep=0pt] at (\x,\y) {};
+}
+\foreach \x/\y in {
+1/65.97,2/71.53,3/60.08,4/54.16,5/71.27,6/53.99,7/62.03,
+8/71.74,9/66.10,10/54.06,11/70.58,12/63.64,13/66.39,14/70.24,
+15/73.63,16/73.75,17/70.93,18/67.97,19/72.76,20/69.64,21/64.88,
+22/68.84,23/61.57,24/74.45,25/72.91,26/77.61,27/66.23,28/54.51
+} {
+  \node[circle,draw=green!60!black,fill=green!60,minimum size=4pt,inner sep=0pt] at (\x,\y) {};
+}
+\end{tikzpicture}
+\caption{Measured and predicted weight for the 28 held-out participant groups. Each point is the participant-level mean; predicted values are out-of-fold.}
+\label{fig:weightpredictions}
+\end{figure*}
+
+The calibrated height and weight models have lower participant-level MAE than their median baselines. These results remain preliminary: the cohort is small, participant identity was not independently audited across all project records, and no external test set is available. The reported metrics describe cross-validation, not a locked test of the active deployment artifacts.
 
 \section{Discussion}
-The design combines explicit geometric reasoning for height with supervised regression for calibration and weight estimation. In the 36-image name-grouped evaluation, calibration improved substantially over raw geometry but did not outperform the median height baseline (6.85 versus 6.68 cm MAE); weight regression outperformed its median baseline (8.95 versus 11.12 kg MAE). In the separate 84-image participant-ID cohort, nested grouped cross-validation yielded lower model MAEs than the participant-level median baselines for both height (3.92 versus 7.31 cm) and weight (5.92 versus 9.95 kg). This difference should be interpreted in light of different cohort composition and identity metadata, not as evidence of a universal improvement. The modest sample size, possible overlap across cohorts, and lack of an external test set require caution. The camera model exposes the role of camera height, distance, and field of view, while the annotated output makes landmark placement more inspectable than a numeric-only interface. Processing an optional second view may provide additional visible body-shape evidence, although the implemented averaging rule has not been shown to improve accuracy empirically.
+The design combines explicit geometric reasoning for height with supervised regression for calibration and weight estimation. In nested participant-grouped cross-validation on the merged 120-image cohort, height MAE was 4.86 cm versus 7.03 cm for the participant-level median baseline, and weight MAE was 6.53 kg versus 9.79 kg. The modest sample size, undocumented view labels for some images, and absence of an external test set require caution. The camera model exposes the role of camera height, distance, and field of view, while the annotated output makes landmark placement more inspectable than a numeric-only interface. Processing an optional second view may provide additional visible body-shape evidence, although the implemented averaging rule has not been shown to improve accuracy empirically.
 
-Several limitations follow directly from the implementation and available evidence. First, the dataset is small and includes repeated individuals and views. Second, height labels in Dataset 1 and weight labels in Dataset 2 have different structures, so the data should not be treated as a single homogeneous independent-sample dataset. Third, the weight model relies on visible silhouette proxies and cannot observe body depth or composition directly. Fourth, a weight interval based on tree prediction spread is not calibrated uncertainty. Fifth, geometric height depends on camera metadata and the assumption that the selected lowest foot landmark lies on the ground. Finally, the current confidence score blends detector confidence and nose visibility; it is not an empirically calibrated probability that the height or weight estimate is correct.
+Several limitations follow directly from the implementation and available evidence. The cohort is small and includes repeated images of the same participants. The weight model relies on visible silhouette proxies and cannot observe body depth or composition directly. A weight interval based on tree prediction spread is not calibrated uncertainty. Geometric height depends on camera metadata and the assumption that the selected lowest foot landmark lies on the ground. Finally, the current confidence score blends detector confidence and nose visibility; it is not an empirically calibrated probability that the height or weight estimate is correct.
 
 The project should be described as a prototype for approximate image-based anthropometric estimation. It should not replace a calibrated measuring instrument or be used for safety-critical eligibility decisions without rigorous external validation.
 
@@ -368,8 +450,9 @@ The project should be described as a prototype for approximate image-based anthr
 Future work should (1) collect a larger, consented, diverse dataset with documented measurement procedures; (2) establish subject-independent train/validation/test partitions; (3) report MAE, RMSE, $R^2$, bias, and error distributions for height and weight separately; (4) evaluate front-only, side-only, and two-view inference under identical test conditions; (5) assess sensitivity to camera distance, camera pitch, field of view, clothing, occlusion, and pose; (6) compare against simple, clearly specified baselines; (7) calibrate predictive intervals using held-out data; and (8) version the dataset, training scripts, model artifacts, and experiment logs. The feedback endpoint should be updated with consent handling and data validation before collecting additional samples.
 
 \section{Conclusion}
-This paper documents a full-stack human height and weight estimation prototype based on YOLOv8 person detection, MediaPipe pose and segmentation features, pinhole-camera geometry, Ridge height calibration, and Random Forest weight regression. Nested grouped cross-validation on the 84-image, 22-participant-ID training cohort achieved 3.92 cm height MAE and 5.92 kg weight MAE, lower than participant-level median baselines of 7.31 cm and 9.95 kg. On a separate 36-image cohort grouped by names, height calibration did not beat its median baseline, though weight regression did. The differing cohorts, small sample sizes, possible overlap across cohorts, and absence of external testing limit these findings. The results establish promising but preliminary within-project evidence, not a validated measurement system. A locked evaluation on additional participants is required before making claims about reliability or real-world suitability.
+This paper documents a full-stack human height and weight estimation prototype based on YOLOv8 person detection, MediaPipe pose and segmentation features, pinhole-camera geometry, Ridge height calibration, and Random Forest weight regression. Nested participant-grouped cross-validation on the merged 120-image cohort assigned to 28 participant IDs achieved 4.86 cm height MAE and 6.53 kg weight MAE, lower than participant-level median baselines of 7.03 cm and 9.79 kg. These are preliminary within-cohort results, not external test performance or evidence of a validated measurement system. Evaluation on additional independently verified participants is required before making claims about reliability or real-world suitability.
 
+\FloatBarrier
 \balance
 \begin{thebibliography}{12}
 

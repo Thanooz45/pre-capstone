@@ -195,7 +195,7 @@ async def predict_body(
             os.remove(tmp_path_side)
 
 
-@router.get("/dataset/people", summary="Search or browse saved dataset people")
+@router.get("/dataset/people", summary="Search or browse the participant-ID training cohort")
 def dataset_people(
     search: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=50, ge=1, le=100),
@@ -210,7 +210,7 @@ def dataset_people(
         ) from exc
 
 
-@router.put("/dataset/people", summary="Update a saved model-specification person")
+@router.put("/dataset/people", summary="Update a participant in the training cohort")
 def update_dataset_person(
     update: DatasetPersonUpdate,
     background_tasks: BackgroundTasks,
@@ -218,7 +218,7 @@ def update_dataset_person(
     dataset_dir = Path(__file__).resolve().parents[2] / "model_specification"
     csv_path = dataset_dir / "height_weight_dataset.csv"
     if not csv_path.is_file():
-        raise HTTPException(status_code=404, detail="The model-specification dataset was not found.")
+        raise HTTPException(status_code=404, detail="The training cohort was not found.")
 
     current_name = " ".join(update.current_name.split())
     updated_name = " ".join(update.name.split())
@@ -238,7 +238,7 @@ def update_dataset_person(
                 "weight_kg",
             }
             if required_fields - set(fieldnames):
-                raise ValueError("The model-specification CSV has an invalid schema.")
+                raise ValueError("The training-cohort table has an invalid schema.")
             rows = list(reader)
 
         matching_rows = [
@@ -249,7 +249,7 @@ def update_dataset_person(
         if not matching_rows:
             raise HTTPException(
                 status_code=404,
-                detail="No editable model-specification records were found for that person.",
+                detail="No editable training-cohort records were found for that participant.",
             )
         if any(
             " ".join(row["person_name"].casefold().split()) == updated_key
@@ -296,7 +296,7 @@ def update_dataset_person(
     except Exception as exc:
         if temporary_csv_path:
             temporary_csv_path.unlink(missing_ok=True)
-        logger.exception("Unable to update model-specification person")
+        logger.exception("Unable to update training-cohort participant")
         raise HTTPException(
             status_code=500,
             detail="Unable to update the person's dataset records.",
@@ -305,7 +305,7 @@ def update_dataset_person(
 
 @router.get(
     "/dataset/images/{dataset_key}/{image_name}",
-    summary="View an image stored in a project dataset",
+    summary="View an image from the participant-ID training cohort",
 )
 def dataset_image(dataset_key: str, image_name: str):
     dataset = DATASETS.get(dataset_key)
@@ -319,7 +319,7 @@ def dataset_image(dataset_key: str, image_name: str):
 
 @router.post(
     "/dataset/lookup",
-    summary="Find saved records by name or an identical image file",
+    summary="Find training-cohort records by name or an identical image file",
 )
 async def dataset_lookup(
     file: UploadFile = File(...),
@@ -577,6 +577,6 @@ def models_info():
         "default_camera_height_cm": settings.DEFAULT_CAMERA_HEIGHT_CM,
         "default_distance_cm": settings.DEFAULT_DISTANCE_CM,
         "vertical_fov_deg": settings.VERTICAL_FOV_DEG,
-        "weight_prediction": "Trained from model_specification/height_weight_dataset.csv.",
+        "weight_prediction": "Trained from the participant-ID image cohort.",
         "camera_height_cm": "Variable; provide the measured height for each image.",
     }

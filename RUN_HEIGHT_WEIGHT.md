@@ -9,6 +9,7 @@
 - The feedback form adds labeled images to that same CSV and starts background retraining; the running API reloads the trained models after a successful run.
 - The web interface now shows estimated weight in kg/lb and an uncertainty range.
 - The dataset browser supports name search and editing names, heights, and weights for records in `model_specification`; saved changes update the CSV and trigger model retraining.
+- Dataset browsing, name search, exact-image lookup, model training, and paper evaluation all use `model_specification` as the single canonical dataset. It currently contains 120 images assigned to 28 participant IDs. Original source folders remain on disk for reference but are not read by these features.
 - The trained models are saved at `backend/models/height_calibrator.joblib` and `backend/models/weight_regressor.joblib`.
 
 ## Start the application
@@ -46,13 +47,15 @@ source .venv/bin/activate
 python -m scripts.train_weight_model
 ```
 
-The CSV has one row per image and includes `person_id`, `image_path`, `subject_distance_cm`, `camera_height_cm`, `height_cm`, and `weight_kg`. Images must exist under `model_specification/images`. Record the actual camera height and subject distance for each image. Validation keeps all images of a person together so the same person cannot appear in both training and evaluation folds. The script reports grouped held-out-person MAE for height and weight.
+The CSV has one row per image and includes `person_id`, `image_path`, `view`, `subject_distance_cm`, `camera_height_cm`, `height_cm`, and `weight_kg`. Use `unknown` when the view is not documented. Images must exist under `model_specification/images`. Record the actual camera height and subject distance for each image. Validation keeps all images of a person together so the same person cannot appear in both training and evaluation folds. The script reports grouped held-out-person MAE for height and weight.
 
 On Windows PowerShell, activate `.\venv\Scripts\Activate.ps1` and run `python -m scripts.train_weight_model` from `backend`.
 
+To regenerate the full nested participant-grouped metrics reported in the paper, run `python ../paper/evaluate_grouped.py` from `backend`. It evaluates all rows in the canonical dataset and saves out-of-fold predictions and metric metadata.
+
 ## Important limits and your next steps
 
-Weight cannot be measured exactly from one 2D image: body depth, clothing, pose, and muscle/fat composition are not visible reliably. The supplied dataset has 84 images from 22 people, with multiple images of the same person at different distances, so treat the displayed weight and range as a capstone demonstration, not medical or scale-grade output.
+Weight cannot be measured exactly from one 2D image: body depth, clothing, pose, and muscle/fat composition are not visible reliably. The dataset currently has 120 images grouped under 28 participant IDs. Some imported images have no documented front/side view, and participant identities have not been independently audited; treat the displayed weight and range as a capstone demonstration, not medical or scale-grade output.
 
 The displayed height is not memorised from the CSV. The application first calculates height from camera geometry, then applies a regularised calibration trained on labelled data. The training script reports grouped held-out-person errors after each run. These estimates are from a very small dataset and are not guarantees for a new person or a different phone/camera setup.
 

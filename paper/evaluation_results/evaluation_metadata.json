@@ -1,11 +1,11 @@
 {
-  "created_at_utc": "2026-11-09T16:59:21.419105+00:00",
-  "dataset_csv": "/Users/chintalapudithanooz/Documents/Projects/capstone/dataset_of_height_weight_updated/Output_data.csv",
-  "dataset_csv_sha256": "9fea690eb8e724b7fff2393c6dbb119bb3b1de1f7ebfa0b2229eb7d6e9e324ef",
-  "image_count": 36,
-  "group_count": 24,
-  "grouping_column": "Name",
-  "grouping_rule": "normalized Name values (identity not independently verified)",
+  "created_at_utc": "2026-11-15T04:54:02.630730+00:00",
+  "dataset_csv": "/Users/chintalapudithanooz/Documents/Projects/capstone/model_specification/height_weight_dataset.csv",
+  "dataset_csv_sha256": "cc5f1feb7cc0c0fe84510ff663f906c38acef9e84c73628c50ec1015685555ed",
+  "image_count": 120,
+  "group_count": 28,
+  "grouping_column": "person_id",
+  "grouping_rule": "normalized participant_id values",
   "outer_folds": 5,
   "inner_folds_max": 5,
   "ridge_alpha_candidates": [
@@ -39,39 +39,39 @@
   },
   "metrics_group_aggregated": {
     "raw_geometric_height_cm": {
-      "n_groups": 24,
-      "mae": 33.04969166666667,
-      "rmse": 33.71747231237896,
-      "r2": -18.381154936492717,
-      "bias": -33.04969166666667
+      "n_groups": 28,
+      "mae": 32.32844577380953,
+      "rmse": 32.97238334873668,
+      "r2": -18.608410868504713,
+      "bias": -32.32844577380953
     },
     "calibrated_height_cm": {
-      "n_groups": 24,
-      "mae": 6.854619092280409,
-      "rmse": 9.112571645425815,
-      "r2": -0.4156358295892071,
-      "bias": -1.5701431053842327
+      "n_groups": 28,
+      "mae": 4.855105013085838,
+      "rmse": 6.232107765598955,
+      "r2": 0.2994943756508228,
+      "bias": -0.8887071073117829
     },
     "training_fold_median_height_cm": {
-      "n_groups": 24,
-      "mae": 6.675416666666664,
-      "rmse": 7.881053493452931,
-      "r2": -0.058859128290768004,
-      "bias": 1.5295833333333289
+      "n_groups": 28,
+      "mae": 7.02678571428571,
+      "rmse": 8.200549850902853,
+      "r2": -0.2129074497357888,
+      "bias": 0.813214285714279
     },
     "weight_kg": {
-      "n_groups": 24,
-      "mae": 8.953516163620323,
-      "rmse": 10.408469371635901,
-      "r2": 0.32727098002002186,
-      "bias": 0.5775799011944752
+      "n_groups": 28,
+      "mae": 6.5306156020236354,
+      "rmse": 7.7976868173484,
+      "r2": 0.5792821886914662,
+      "bias": -0.26956018804828324
     },
     "training_fold_median_weight_kg": {
-      "n_groups": 24,
-      "mae": 11.125,
-      "rmse": 13.302568674257365,
-      "r2": -0.0988475511810174,
-      "bias": -0.041666666666666664
+      "n_groups": 28,
+      "mae": 9.785714285714286,
+      "rmse": 12.071956877703915,
+      "r2": -0.00835782431800336,
+      "bias": 0.7857142857142857
     }
   },
   "predictions_csv": "grouped_predictions.csv"

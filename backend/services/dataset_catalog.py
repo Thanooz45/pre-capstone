@@ -1,4 +1,4 @@
-"""SQLite search index for the project's CSV-backed image datasets."""
+"""SQLite search index for the participant-ID training cohort."""
 
 import csv
 import hashlib
@@ -12,31 +12,6 @@ BACKEND = PROJECT / "backend"
 DATABASE_PATH = BACKEND / ".ultralytics" / "dataset_index.sqlite3"
 
 DATASETS = {
-    "primary": {
-        "directory": PROJECT / "dataset_of_height_weight_updated",
-        "csv": "Output_data.csv",
-        "images": (
-            ("Image Name", "front"),
-        ),
-        "name": "Name",
-        "height": "Height (cm)",
-        "weight": "Weight (kg)",
-        "distance": "Distance from camera (cm)",
-        "camera_height": "Camera height from ground (cm)",
-    },
-    "paired": {
-        "directory": PROJECT / "height_weight_dataset_updated",
-        "csv": "height_weight_dataset.csv",
-        "images": (
-            ("Image 1 Name", "Image 1 View"),
-            ("Image 2 Name", "Image 2 View"),
-        ),
-        "name": "Person Name",
-        "height": None,
-        "weight": "Weight (kg)",
-        "distance": "Distance from Camera (cm)",
-        "camera_height": "Camera Height from Ground (cm)",
-    },
     "model_specification": {
         "directory": PROJECT / "model_specification",
         "csv": "height_weight_dataset.csv",
@@ -118,7 +93,36 @@ def _read_records() -> list[dict]:
         if not csv_path.is_file():
             continue
         with csv_path.open(encoding="utf-8-sig", newline="") as source:
-            for row in csv.DictReader(source):
+            reader = csv.DictReader(source)
+            headers = [header.strip() for header in reader.fieldnames or []]
+            if len(headers) != len(set(headers)):
+                raise ValueError(f"{csv_path} contains duplicate headers after trimming.")
+            reader.fieldnames = headers
+
+            required_columns = {
+                config["name"],
+                config["distance"],
+                config["camera_height"],
+                *(
+                    column
+                    for image_column, view_column in config["images"]
+                    for column in (image_column, view_column)
+                    if column
+                ),
+            }
+            required_columns.update(
+                column for column in (config["height"], config["weight"]) if column
+            )
+            missing_columns = required_columns - set(headers)
+            if missing_columns:
+                raise ValueError(
+                    f"{csv_path} is missing required columns: "
+                    f"{', '.join(sorted(missing_columns))}"
+                )
+
+            for row in reader:
+                if None in row:
+                    raise ValueError(f"{csv_path} contains a malformed row.")
                 name = (row.get(config["name"]) or "").strip()
                 if not name:
                     continue
@@ -390,9 +394,13 @@ def list_people(
     try:
         _sync(connection)
         name_keys, total = _search_keys(connection, search, limit, offset)
+        image_count = connection.execute(
+            "SELECT COUNT(*) FROM image_records"
+        ).fetchone()[0]
         return {
             "people": _group_people(connection, name_keys),
             "total": total,
+            "image_count": image_count,
             "limit": limit,
             "offset": offset,
         }

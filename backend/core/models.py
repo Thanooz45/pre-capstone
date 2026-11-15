@@ -84,7 +84,7 @@ class ErrorResponse(BaseModel):
 
 
 class DatasetPersonUpdate(BaseModel):
-    """Updated person labels applied to all of their model-specification images."""
+    """Updated participant labels applied to all images in the training cohort."""
 
     current_name: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=100)

@@ -1,11 +1,11 @@
-"""Participant-grouped evaluation of the height and weight estimators.
+"""Participant-grouped evaluation on the canonical training cohort.
 
 Run from the backend directory with:
     .venv/bin/python ../paper/evaluate_grouped.py
 
 The script writes per-image out-of-fold predictions and evaluation metadata to
-paper/evaluation_results by default. If the CSV has a participant_id column,
-that column is used for grouping; otherwise normalized names are used.
+paper/evaluation_results. Every fold groups by participant ID so images of one
+participant cannot appear in both training and test partitions.
 """
 
 import argparse
@@ -29,8 +29,8 @@ from sklearn.preprocessing import StandardScaler
 
 PROJECT = Path(__file__).resolve().parents[1]
 BACKEND = PROJECT / "backend"
-DATASET = PROJECT / "dataset_of_height_weight_updated"
-DEFAULT_CSV = DATASET / "Output_data.csv"
+DATASET = PROJECT / "model_specification"
+DEFAULT_CSV = DATASET / "height_weight_dataset.csv"
 DEFAULT_OUTPUT = PROJECT / "paper" / "evaluation_results"
 sys.path.insert(0, str(BACKEND))
 
@@ -38,11 +38,12 @@ from services.height_estimator import estimate_height, load_models
 from services.weight_estimator import FEATURE_NAMES
 
 REQUIRED_COLUMNS = {
-    "Image Name",
-    "Height (cm)",
-    "Weight (kg)",
-    "Distance from camera (cm)",
-    "Camera height from ground (cm)",
+    "person_id",
+    "image_path",
+    "height_cm",
+    "weight_kg",
+    "subject_distance_cm",
+    "camera_height_cm",
 }
 ALPHAS = [0.1, 1.0, 10.0, 100.0]
 MAX_CV_FOLDS = 5
@@ -57,57 +58,65 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
         reader = csv.DictReader(file)
         if reader.fieldnames is None:
             raise ValueError(f"Dataset CSV has no header: {csv_path}")
-        missing_columns = REQUIRED_COLUMNS - set(reader.fieldnames)
+        headers = [header.strip() for header in reader.fieldnames]
+        if len(headers) != len(set(headers)):
+            raise ValueError(f"{csv_path} contains duplicate headers after trimming.")
+        reader.fieldnames = headers
+        missing_columns = REQUIRED_COLUMNS - set(headers)
         if missing_columns:
             raise ValueError(
                 f"{csv_path} is missing required columns: "
                 f"{', '.join(sorted(missing_columns))}"
             )
-        grouping_column = (
-            "participant_id"
-            if "participant_id" in reader.fieldnames
-            else "Name"
-        )
-        if grouping_column not in reader.fieldnames:
-            raise ValueError(
-                f"{csv_path} must contain either participant_id or Name for grouping"
-            )
-        rows = list(reader)
+        source_rows = list(reader)
 
-    if not rows:
+    if not source_rows:
         raise ValueError(f"Dataset CSV contains no image records: {csv_path}")
 
     resolved_image_dir = image_dir.resolve()
+    rows = []
     seen_images: set[Path] = set()
-    for row_number, row in enumerate(rows, start=2):
-        if None in row:
+    for row_number, source_row in enumerate(source_rows, start=2):
+        if None in source_row:
             raise ValueError(f"Malformed CSV row {row_number}: too many fields")
+        row = {
+            key.strip(): value.strip() if value is not None else ""
+            for key, value in source_row.items()
+            if key is not None
+        }
 
-        image_name = (row.get("Image Name") or "").strip()
-        if not image_name:
-            raise ValueError(f"Missing image name on CSV row {row_number}")
-        row["Image Name"] = image_name
+        image_reference = row["image_path"]
+        relative_image_path = Path(image_reference)
+        if (
+            not image_reference
+            or relative_image_path.is_absolute()
+            or len(relative_image_path.parts) != 2
+            or relative_image_path.parts[0] != "images"
+        ):
+            raise ValueError(
+                f"Invalid image reference on CSV row {row_number}: {image_reference!r}"
+            )
+        image_name = relative_image_path.name
         image_path = (resolved_image_dir / image_name).resolve()
         if not image_path.is_relative_to(resolved_image_dir):
-            raise ValueError(
-                f"Image path must be inside {resolved_image_dir}: {image_name}"
-            )
+            raise ValueError(f"Image reference escapes the cohort on row {row_number}.")
         if image_path in seen_images:
-            raise ValueError(
-                f"Duplicate image path on CSV row {row_number}: {image_name}"
-            )
+            raise ValueError(f"Duplicate image reference on CSV row {row_number}.")
         if not image_path.is_file():
             raise FileNotFoundError(
-                f"Image listed on CSV row {row_number} does not exist: {image_path}"
+                f"Image listed on CSV row {row_number} does not exist: {image_name}"
             )
         seen_images.add(image_path)
 
-        group_value = (row.get(grouping_column) or "").strip()
-        if not group_value:
-            raise ValueError(
-                f"Missing {grouping_column} on CSV row {row_number} ({image_name})"
-            )
-        row["_group"] = _normalize_group(group_value)
+        participant_id = row["person_id"].strip()
+        if not participant_id:
+            raise ValueError(f"Missing participant ID on CSV row {row_number}.")
+        row["_group"] = _normalize_group(participant_id)
+        row["Image Name"] = image_name
+        row["Height (cm)"] = row["height_cm"]
+        row["Weight (kg)"] = row["weight_kg"]
+        row["Distance from camera (cm)"] = row["subject_distance_cm"]
+        row["Camera height from ground (cm)"] = row["camera_height_cm"]
 
         for column in (
             "Height (cm)",
@@ -126,8 +135,9 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
                     f"{column} must be a finite positive value on CSV row "
                     f"{row_number}: {row[column]!r}"
                 )
+        rows.append(row)
 
-    return rows, grouping_column
+    return rows, "person_id"
 
 
 def _grouped_values(
@@ -204,16 +214,14 @@ def _package_version(package: str) -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--csv", type=Path, default=DEFAULT_CSV)
-    parser.add_argument("--images", type=Path, default=DATASET / "images")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--folds", type=int, default=MAX_CV_FOLDS)
     args = parser.parse_args()
     if args.folds < 2:
         parser.error("--folds must be at least 2")
 
-    csv_path = args.csv.resolve()
-    image_dir = args.images.resolve()
+    csv_path = DEFAULT_CSV.resolve()
+    image_dir = (DATASET / "images").resolve()
     output_dir = args.output_dir.resolve()
     rows, grouping_column = _load_rows(csv_path, image_dir)
     groups = np.asarray([row["_group"] for row in rows])
@@ -386,11 +394,7 @@ def main() -> None:
             "kg",
         ),
     }
-    grouping_description = (
-        "normalized participant_id values"
-        if grouping_column == "participant_id"
-        else "normalized Name values (identity not independently verified)"
-    )
+    grouping_description = "normalized participant_id values"
     print(
         f"Images: {len(rows)}; unique groups: {group_count}; "
         f"groups from {grouping_description}; outer folds: {outer_fold_count}"
@@ -412,7 +416,7 @@ def main() -> None:
             "weight_oof_kg",
             "weight_fold_median_kg",
         ]
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer = csv.DictWriter(file, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         for index, row in enumerate(rows):
             writer.writerow(

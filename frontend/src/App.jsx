@@ -33,6 +33,7 @@ export default function App() {
   const [datasetLoading, setDatasetLoading] = useState(false);
   const [datasetError, setDatasetError] = useState(null);
   const [datasetTotal, setDatasetTotal] = useState(0);
+  const [datasetImageCount, setDatasetImageCount] = useState(0);
   const [datasetPage, setDatasetPage] = useState(0);
   const [datasetRefresh, setDatasetRefresh] = useState(0);
   const [editingPerson, setEditingPerson] = useState(null);
@@ -75,6 +76,7 @@ export default function App() {
           if (!active) return;
           setDatasetPeople(data.people);
           setDatasetTotal(data.total);
+          setDatasetImageCount(data.image_count);
         })
         .catch(() => {
           if (active) setDatasetError("Unable to load the dataset. Check that the backend is running.");
@@ -295,7 +297,7 @@ export default function App() {
           className={`tab ${tab === 'dataset' ? 'active' : ''}`}
           onClick={() => { setTab('dataset'); setDatasetSearch(""); setDatasetPage(0); setDatasetRefresh((value) => value + 1); setError(null); }}
         >
-          <UsersRound size={18} /> Browse Dataset
+          <UsersRound size={18} /> Training Dataset
         </button>
       </div>
 
@@ -319,8 +321,8 @@ export default function App() {
       {tab === "dataset" ? (
         <section className="dataset-page">
           <div className="panel">
-            <h2><UsersRound /> Saved People</h2>
-            <p>Search by name to view saved measurements and image filenames. Edit controls update this person's training-dataset records and retrain the model.</p>
+            <h2><UsersRound /> Participant-ID Training Cohort</h2>
+            <p>Search and edit the active training cohort only. Dataset search and exact-image lookup are limited to these participant records.</p>
             <label className="dataset-search">
               <Search size={18} />
               <input
@@ -334,7 +336,9 @@ export default function App() {
               />
             </label>
             <p className="dataset-count">
-              {datasetLoading ? "Loading dataset…" : `${datasetTotal} people`}
+              {datasetLoading
+                ? "Loading training cohort…"
+                : `${datasetImageCount} images · ${datasetTotal}${datasetSearch ? " matching" : ""} participant${datasetTotal === 1 ? "" : "s"}`}
             </p>
             {datasetError && <div className="error">{datasetError}</div>}
           </div>
@@ -405,7 +409,7 @@ export default function App() {
                       {person.images.map((image) => (
                         <div className="person-image" key={`${image.dataset}-${image.name}`}>
                           <img src={datasetImageUrl(image.url)} alt={`${person.name} ${image.view ?? "dataset"} image`} loading="lazy" />
-                          <small>{image.name}</small>
+                          <small>{image.view ? `${image.view} · ` : ""}{image.name}</small>
                         </div>
                       ))}
                     </div>
@@ -696,7 +700,7 @@ export default function App() {
             {feedbackSubmitted && (
               <div className="feedback-banner">
                 <h3><CheckCircle size={20} /> Data saved</h3>
-                <p>The named person and image records were added to the dataset. Open Browse Dataset to search for them.</p>
+                <p>The named person and image records were added to the training cohort. Open Training Dataset to search for them.</p>
               </div>
             )}
           </div>
