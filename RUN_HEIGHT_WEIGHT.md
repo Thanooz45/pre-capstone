@@ -6,7 +6,7 @@
 - A height-calibration model is trained from the labelled heights. It corrects systematic phone-lens, camera-pitch, and landmark bias before height is displayed and before weight is estimated.
 - A combined API endpoint, `POST /api/predict-body`, now returns height and weight.
 - Weight uses the calculated height plus visible shoulder/hip proportions and a MediaPipe silhouette. The local Random Forest regressor and height calibrator train from the image-level CSV in `model_specification/height_weight_dataset.csv`.
-- The feedback form adds labeled images to that same CSV and starts background retraining; the running API reloads the trained models after a successful run.
+- The feedback form adds labeled images to that same CSV and starts background retraining; the running API reloads the trained models after a successful run. Height-only feedback stores the height label and leaves weight blank; the height model uses it, while weight training skips rows without verified weight.
 - The web interface now shows estimated weight in kg/lb and an uncertainty range.
 - The dataset browser supports name search and editing names, heights, and weights for records in `model_specification`; saved changes update the CSV and trigger model retraining.
 - Dataset browsing, name search, exact-image lookup, model training, and paper evaluation all use `model_specification` as the single canonical dataset. It currently contains 120 images assigned to 28 participant IDs. Original source folders remain on disk for reference but are not read by these features.
@@ -47,7 +47,7 @@ source .venv/bin/activate
 python -m scripts.train_weight_model
 ```
 
-The CSV has one row per image and includes `person_id`, `image_path`, `view`, `subject_distance_cm`, `camera_height_cm`, `height_cm`, and `weight_kg`. Use `unknown` when the view is not documented. Images must exist under `model_specification/images`. Record the actual camera height and subject distance for each image. Validation keeps all images of a person together so the same person cannot appear in both training and evaluation folds. The script reports grouped held-out-person MAE for height and weight.
+The CSV has one row per image and includes `person_id`, `image_path`, `view`, `subject_distance_cm`, `camera_height_cm`, `height_cm`, and `weight_kg`. Use `unknown` when the view is not documented. Images must exist under `model_specification/images`. Record the actual camera height and subject distance for each image. A missing `weight_kg` is allowed for height-only feedback; such rows are excluded from weight training and weight evaluation. Validation keeps all images of a person together so the same person cannot appear in both training and evaluation folds. The script reports grouped held-out-person MAE for height and weight.
 
 On Windows PowerShell, activate `.\venv\Scripts\Activate.ps1` and run `python -m scripts.train_weight_model` from `backend`.
 

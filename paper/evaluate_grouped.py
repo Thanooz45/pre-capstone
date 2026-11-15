@@ -124,6 +124,8 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
             "Distance from camera (cm)",
             "Camera height from ground (cm)",
         ):
+            if column == "Weight (kg)" and not row[column]:
+                continue
             try:
                 value = float(row[column])
             except (TypeError, ValueError) as error:
@@ -231,6 +233,20 @@ def main() -> None:
             "Nested grouped evaluation requires at least four distinct groups; "
             f"found {group_count}."
         )
+    weights = np.asarray(
+        [
+            float(row["Weight (kg)"]) if row["Weight (kg)"] else np.nan
+            for row in rows
+        ],
+        dtype=float,
+    )
+    weight_mask = np.isfinite(weights)
+    weight_group_count = len(set(groups[weight_mask]))
+    if weight_group_count < 5:
+        raise ValueError(
+            "Nested weight evaluation requires at least five participant groups "
+            f"with measured weights; found {weight_group_count}."
+        )
     outer_fold_count = min(args.folds, group_count)
     outer_splits = list(
         GroupKFold(n_splits=outer_fold_count).split(
@@ -249,7 +265,6 @@ def main() -> None:
     load_models()
     feature_rows = []
     heights = []
-    weights = []
     for row in rows:
         result = estimate_height(
             str(image_dir / row["Image Name"]),
@@ -265,11 +280,9 @@ def main() -> None:
             )
         feature_rows.append(feature_row)
         heights.append(float(row["Height (cm)"]))
-        weights.append(float(row["Weight (kg)"]))
 
     features = np.asarray(feature_rows, dtype=float)
     heights = np.asarray(heights, dtype=float)
-    weights = np.asarray(weights, dtype=float)
     if features.shape != (len(rows), len(FEATURE_NAMES)):
         raise ValueError(
             f"Expected feature matrix shape {(len(rows), len(FEATURE_NAMES))}, "
@@ -278,9 +291,8 @@ def main() -> None:
     if not (
         np.isfinite(features).all()
         and np.isfinite(heights).all()
-        and np.isfinite(weights).all()
     ):
-        raise ValueError("Features and target values must all be finite.")
+        raise ValueError("Features and height targets must all be finite.")
 
     height_oof = np.full(len(heights), np.nan)
     weight_oof = np.full(len(weights), np.nan)
@@ -326,11 +338,24 @@ def main() -> None:
         height_median_oof[test_indices] = _group_median(
             heights[train_indices], train_groups
         )
+        fold_assignments[test_indices] = fold_number
 
-        weight_train_features = features[train_indices].copy()
-        weight_test_features = features[test_indices].copy()
-        weight_train_features[:, height_index] = train_height_oof
-        weight_test_features[:, height_index] = height_oof[test_indices]
+        train_weight_mask = weight_mask[train_indices]
+        test_weight_mask = weight_mask[test_indices]
+        train_weight_indices = train_indices[train_weight_mask]
+        test_weight_indices = test_indices[test_weight_mask]
+        if not len(test_weight_indices):
+            continue
+        if len(set(groups[train_weight_indices])) < 2:
+            raise ValueError(
+                f"Outer fold {fold_number} leaves fewer than two weight-labelled "
+                "training groups."
+            )
+
+        weight_train_features = features[train_weight_indices].copy()
+        weight_train_features[:, height_index] = train_height_oof[train_weight_mask]
+        weight_test_features = features[test_weight_indices].copy()
+        weight_test_features[:, height_index] = height_oof[test_weight_indices]
 
         regressor = RandomForestRegressor(
             n_estimators=300,
@@ -338,20 +363,18 @@ def main() -> None:
             max_features=0.8,
             random_state=42,
         )
-        regressor.fit(weight_train_features, weights[train_indices])
-        weight_oof[test_indices] = regressor.predict(weight_test_features)
-        weight_median_oof[test_indices] = _group_median(
-            weights[train_indices], train_groups
+        regressor.fit(weight_train_features, weights[train_weight_indices])
+        weight_oof[test_weight_indices] = regressor.predict(weight_test_features)
+        weight_median_oof[test_weight_indices] = _group_median(
+            weights[train_weight_indices], groups[train_weight_indices]
         )
-        fold_assignments[test_indices] = fold_number
 
-    oof_arrays = (
-        height_oof,
-        weight_oof,
-        height_median_oof,
-        weight_median_oof,
-    )
-    if any(not np.isfinite(values).all() for values in oof_arrays):
+    if not (
+        np.isfinite(height_oof).all()
+        and np.isfinite(height_median_oof).all()
+        and np.isfinite(weight_oof[weight_mask]).all()
+        and np.isfinite(weight_median_oof[weight_mask]).all()
+    ):
         raise RuntimeError(
             "Evaluation did not produce finite predictions for every row."
         )
@@ -363,9 +386,13 @@ def main() -> None:
     height_baseline_targets, height_baseline_predictions = _grouped_values(
         heights, height_median_oof, groups
     )
-    weight_targets, weight_predictions = _grouped_values(weights, weight_oof, groups)
+    weight_targets, weight_predictions = _grouped_values(
+        weights[weight_mask], weight_oof[weight_mask], groups[weight_mask]
+    )
     weight_baseline_targets, weight_baseline_predictions = _grouped_values(
-        weights, weight_median_oof, groups
+        weights[weight_mask],
+        weight_median_oof[weight_mask],
+        groups[weight_mask],
     )
 
     metrics: dict[str, dict[str, float | int]] = {
@@ -396,7 +423,8 @@ def main() -> None:
     }
     grouping_description = "normalized participant_id values"
     print(
-        f"Images: {len(rows)}; unique groups: {group_count}; "
+        f"Images: {len(rows)}; height groups: {group_count}; "
+        f"weight labels: {int(weight_mask.sum())} across {weight_group_count} groups; "
         f"groups from {grouping_description}; outer folds: {outer_fold_count}"
     )
 
@@ -428,9 +456,11 @@ def main() -> None:
                     "height_raw_geometric_cm": features[index, height_index],
                     "height_oof_cm": height_oof[index],
                     "height_fold_median_cm": height_median_oof[index],
-                    "weight_true_kg": weights[index],
-                    "weight_oof_kg": weight_oof[index],
-                    "weight_fold_median_kg": weight_median_oof[index],
+                    "weight_true_kg": weights[index] if weight_mask[index] else "",
+                    "weight_oof_kg": weight_oof[index] if weight_mask[index] else "",
+                    "weight_fold_median_kg": (
+                        weight_median_oof[index] if weight_mask[index] else ""
+                    ),
                 }
             )
 
@@ -440,6 +470,8 @@ def main() -> None:
         "dataset_csv_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
         "image_count": len(rows),
         "group_count": group_count,
+        "weight_label_count": int(weight_mask.sum()),
+        "weight_group_count": weight_group_count,
         "grouping_column": grouping_column,
         "grouping_rule": grouping_description,
         "outer_folds": outer_fold_count,

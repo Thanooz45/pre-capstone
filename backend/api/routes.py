@@ -14,6 +14,7 @@ import csv
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -61,8 +62,8 @@ router = APIRouter(tags=["Height & Weight Estimation"])
     description=(
         "**Pipeline:**\n\n"
         "1. **YOLOv8** — detects the person bounding box (COCO class 0)\n"
-        "2. **MediaPipe Pose** — extracts head, nose, ankle, and heel landmarks\n"
-        "3. **Pixel height** — computed from estimated head-top → lowest heel\n"
+        "2. **MediaPipe Pose** — extracts body landmarks for posture and shape features\n"
+        "3. **Pixel height** — computed from the person-box top → lowest visible heel/toe\n"
         "4. **Pinhole Camera Geometry** — converts pixel height to real-world cm\n"
         "5. **OpenCV** — draws green bounding box, red keypoints, blue measurement line\n\n"
         "Returns height in **cm** and **feet/inches**, a confidence score, "
@@ -127,17 +128,15 @@ async def predict_body(
             image_path=tmp_path,
             camera_height_cm=camera_height_cm,
             distance_cm=distance_cm,
+            height_calibrator=calibrate_height,
         )
         features = result.pop("_weight_features")
-        geometric_height = result["estimated_height_cm"]
-        calibrated_height = calibrate_height(features)
+        geometric_height = result["geometric_height_cm"]
+        calibrated_height = result["estimated_height_cm"]
         
         # Base result
         features["estimated_height_cm"] = calibrated_height
         result["geometric_height_cm"] = geometric_height
-        result["estimated_height_cm"] = round(calibrated_height, 1)
-        total_inches = calibrated_height / 2.54
-        result["estimated_height_ft"] = f"{int(total_inches // 12)}' {round(total_inches % 12, 1)}\""
         
         # Estimate weight (Front)
         front_weight_est = estimate_weight(features)
@@ -148,9 +147,10 @@ async def predict_body(
                 image_path=tmp_path_side,
                 camera_height_cm=camera_height_cm,
                 distance_cm=distance_cm,
+                height_calibrator=calibrate_height,
             )
             side_features = side_result.pop("_weight_features")
-            side_features["estimated_height_cm"] = calibrate_height(side_features)
+            side_features["estimated_height_cm"] = side_result["estimated_height_cm"]
             side_weight_est = estimate_weight(side_features)
             
             # Average the predictions
@@ -379,7 +379,7 @@ def run_training_task():
 
 @router.post(
     "/submit-feedback",
-    summary="Submit accurate user height/weight data and retrain model",
+    summary="Submit verified user measurements and retrain the applicable model",
 )
 async def submit_feedback(
     background_tasks: BackgroundTasks,
@@ -387,7 +387,8 @@ async def submit_feedback(
     file_side: UploadFile = File(None, description="Side view image (optional)."),
     person_name: str = Form(..., min_length=1, max_length=100),
     actual_height_cm: float = Form(..., gt=0, le=300),
-    actual_weight_kg: float = Form(..., gt=0, le=500),
+    actual_weight_kg: float | None = Form(default=None, gt=0, le=500),
+    feedback_mode: Literal["height_only", "height_weight"] = Form(default="height_weight"),
     camera_height_cm: float = Form(default=settings.DEFAULT_CAMERA_HEIGHT_CM, ge=30.0, le=500.0),
     distance_cm: float = Form(default=settings.DEFAULT_DISTANCE_CM, ge=30.0, le=2000.0),
 ):
@@ -402,6 +403,13 @@ async def submit_feedback(
         clean_name = " ".join(person_name.split())
         if not clean_name:
             raise HTTPException(status_code=422, detail="Person name is required.")
+        if feedback_mode == "height_weight" and actual_weight_kg is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Actual weight is required for height-and-weight feedback.",
+            )
+        if feedback_mode == "height_only":
+            actual_weight_kg = None
 
         if csv_path.exists():
             with csv_path.open(newline="", encoding="utf-8-sig") as csvfile:
@@ -510,7 +518,7 @@ async def submit_feedback(
                     "subject_distance_cm": distance_cm,
                     "camera_height_cm": camera_height_cm,
                     "height_cm": actual_height_cm,
-                    "weight_kg": actual_weight_kg,
+                    "weight_kg": actual_weight_kg if actual_weight_kg is not None else "",
                 }
             )
             next_image_number += 1
@@ -535,9 +543,14 @@ async def submit_feedback(
         background_tasks.add_task(run_training_task)
         return JSONResponse(
             content={
-                "message": "Person data added to the training dataset.",
+                "message": (
+                    "Height feedback added to the training dataset."
+                    if feedback_mode == "height_only"
+                    else "Height and weight feedback added to the training dataset."
+                ),
                 "person_name": clean_name,
                 "images": [path.name for path in saved_images],
+                "feedback_mode": feedback_mode,
                 "training_started": True,
             }
         )

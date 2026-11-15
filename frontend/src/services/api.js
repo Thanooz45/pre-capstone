@@ -57,7 +57,8 @@ export async function submitFeedback(
   actualHeight,
   actualWeight,
   cameraHeight,
-  distance
+  distance,
+  feedbackMode
 ) {
   const body = new FormData();
   body.append("file", file);
@@ -66,7 +67,10 @@ export async function submitFeedback(
   }
   body.append("person_name", personName);
   body.append("actual_height_cm", String(actualHeight));
-  body.append("actual_weight_kg", String(actualWeight));
+  if (actualWeight != null) {
+    body.append("actual_weight_kg", String(actualWeight));
+  }
+  body.append("feedback_mode", feedbackMode);
   body.append("camera_height_cm", String(cameraHeight));
   body.append("distance_cm", String(distance));
   const { data } = await api.post("/submit-feedback", body);

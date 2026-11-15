@@ -124,11 +124,19 @@ def _evaluate_by_person(features, heights, weights, groups):
     heights = np.asarray(heights, dtype=float)
     weights = np.asarray(weights, dtype=float)
     groups = np.asarray(groups)
+    weight_mask = np.isfinite(weights)
+    weight_group_count = len(set(groups[weight_mask]))
+    if weight_group_count < 5:
+        raise RuntimeError(
+            "At least 5 participant groups with measured weights are required "
+            "to evaluate the weight model."
+        )
+
     height_index = FEATURE_NAMES.index("estimated_height_cm")
-    height_predictions = np.empty(len(features), dtype=float)
-    weight_predictions = np.empty(len(features), dtype=float)
-    height_baseline_predictions = np.empty(len(features), dtype=float)
-    weight_baseline_predictions = np.empty(len(features), dtype=float)
+    height_predictions = np.full(len(features), np.nan)
+    weight_predictions = np.full(len(features), np.nan)
+    height_baseline_predictions = np.full(len(features), np.nan)
+    weight_baseline_predictions = np.full(len(features), np.nan)
     outer_folds = GroupKFold(n_splits=min(5, person_count))
 
     for train_indices, test_indices in outer_folds.split(features, heights, groups):
@@ -148,28 +156,50 @@ def _evaluate_by_person(features, heights, weights, groups):
             heights[train_indices], train_groups
         )
 
-        weight_train_features = features[train_indices].copy()
-        weight_train_features[:, height_index] = inner_height_predictions
-        weight_test_features = features[test_indices].copy()
-        weight_test_features[:, height_index] = held_out_heights
+        train_weight_mask = weight_mask[train_indices]
+        test_weight_mask = weight_mask[test_indices]
+        train_weight_indices = train_indices[train_weight_mask]
+        test_weight_indices = test_indices[test_weight_mask]
+        if not len(test_weight_indices):
+            continue
+        if len(set(groups[train_weight_indices])) < 2:
+            raise RuntimeError(
+                "A held-out fold leaves fewer than two weight-labelled training groups."
+            )
+
+        weight_train_features = features[train_weight_indices].copy()
+        weight_train_features[:, height_index] = inner_height_predictions[
+            train_weight_mask
+        ]
+        weight_test_features = features[test_weight_indices].copy()
+        weight_test_features[:, height_index] = held_out_heights[test_weight_mask]
         weight_model = _new_weight_model()
-        weight_model.fit(weight_train_features, weights[train_indices])
-        weight_predictions[test_indices] = weight_model.predict(weight_test_features)
-        weight_baseline_predictions[test_indices] = _group_median(
-            weights[train_indices], train_groups
+        weight_model.fit(weight_train_features, weights[train_weight_indices])
+        weight_predictions[test_weight_indices] = weight_model.predict(
+            weight_test_features
         )
+        weight_baseline_predictions[test_weight_indices] = _group_median(
+            weights[train_weight_indices], groups[train_weight_indices]
+        )
+
+    if not np.isfinite(height_predictions).all():
+        raise RuntimeError("Nested evaluation left missing height predictions.")
+    if not np.isfinite(weight_predictions[weight_mask]).all():
+        raise RuntimeError("Nested evaluation left missing labelled-weight predictions.")
 
     grouped_heights, grouped_height_predictions = _grouped_targets_predictions(
         heights, height_predictions, groups
     )
     grouped_weights, grouped_weight_predictions = _grouped_targets_predictions(
-        weights, weight_predictions, groups
+        weights[weight_mask], weight_predictions[weight_mask], groups[weight_mask]
     )
     grouped_height_baseline = _grouped_targets_predictions(
         heights, height_baseline_predictions, groups
     )[1]
     grouped_weight_baseline = _grouped_targets_predictions(
-        weights, weight_baseline_predictions, groups
+        weights[weight_mask],
+        weight_baseline_predictions[weight_mask],
+        groups[weight_mask],
     )[1]
     return {
         "height_mae_cm": mean_absolute_error(
@@ -237,8 +267,14 @@ def main() -> None:
         camera_height = float(row["camera_height_cm"])
         distance = float(row["subject_distance_cm"])
         height = float(row["height_cm"])
-        weight = float(row["weight_kg"])
-        if camera_height <= 0 or distance <= 0 or height <= 0 or weight <= 0:
+        weight_text = row["weight_kg"].strip()
+        weight = float(weight_text) if weight_text else np.nan
+        measured_values = (camera_height, distance, height)
+        if (
+            not np.isfinite(measured_values).all()
+            or min(measured_values) <= 0
+            or (weight_text and (not np.isfinite(weight) or weight <= 0))
+        ):
             raise ValueError(f"Measurements must be positive for image {row['image_path']}")
 
     load_models()
@@ -255,7 +291,8 @@ def main() -> None:
             raise ValueError(f"Non-finite image features extracted from {image_path}")
         features.append(feature_row)
         heights.append(float(row["height_cm"]))
-        weights.append(float(row["weight_kg"]))
+        weight_text = row["weight_kg"].strip()
+        weights.append(float(weight_text) if weight_text else np.nan)
         groups.append(row["person_id"])
         print(f"Processed {row['image_path']}")
 
@@ -274,25 +311,36 @@ def main() -> None:
 
     feature_array = np.asarray(features, dtype=float)
     height_array = np.asarray(heights, dtype=float)
+    weight_array = np.asarray(weights, dtype=float)
     group_array = np.asarray(groups)
+    weight_mask = np.isfinite(weight_array)
+    weight_group_count = len(set(group_array[weight_mask]))
+    if weight_group_count < 5:
+        raise RuntimeError(
+            "At least 5 participant groups with measured weights are required "
+            "to train the weight model."
+        )
     out_of_fold_heights = _grouped_height_oof(
         feature_array, height_array, group_array
     )
 
     height_model = _fit_height_model(feature_array, height_array, group_array)
 
-    weight_features = feature_array.copy()
     height_index = FEATURE_NAMES.index("estimated_height_cm")
-    weight_features[:, height_index] = out_of_fold_heights
+    weight_features = feature_array[weight_mask].copy()
+    weight_features[:, height_index] = out_of_fold_heights[weight_mask]
     weight_model = _new_weight_model()
-    weight_model.fit(weight_features, weights)
+    weight_model.fit(weight_features, weight_array[weight_mask])
 
     model_directory = args.model_output_dir.resolve()
     model_directory.mkdir(parents=True, exist_ok=True)
     dump(height_model, model_directory / "height_calibrator.joblib")
     dump(weight_model, model_directory / "weight_regressor.joblib")
 
-    print(f"\nTrained on {len(features)} images from {len(set(groups))} people.")
+    print(
+        f"\nTrained height on {len(features)} images from {len(set(groups))} people; "
+        f"weight on {int(weight_mask.sum())} images from {weight_group_count} people."
+    )
     print(
         "Camera heights represented: "
         f"{min(float(row['camera_height_cm']) for row in rows):g}–"

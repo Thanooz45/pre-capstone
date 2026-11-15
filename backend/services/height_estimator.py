@@ -21,7 +21,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -336,6 +336,7 @@ def estimate_height(
     image_path: str,
     camera_height_cm: float = settings.DEFAULT_CAMERA_HEIGHT_CM,
     distance_cm: float = settings.DEFAULT_DISTANCE_CM,
+    height_calibrator: Callable[[dict], float] | None = None,
 ) -> dict:
     """
     Run the full height-estimation pipeline on a single image file.
@@ -345,11 +346,13 @@ def estimate_height(
     image_path      : Absolute path to the input image (JPG / PNG / WEBP).
     camera_height_cm: Height of the camera above the ground in centimetres.
     distance_cm     : Horizontal distance from the camera to the subject in cm.
+    height_calibrator: Optional dataset-trained correction for the reported height.
 
     Returns
     -------
     dict with keys:
-        estimated_height_cm     (float)
+        estimated_height_cm     (float; calibrated when a calibrator is supplied)
+        geometric_height_cm     (float; uncalibrated camera-geometry estimate)
         estimated_height_ft     (str)
         confidence_score        (float, 0–1)
         pixel_height            (int)
@@ -468,12 +471,9 @@ def estimate_height(
     # =========================================================
     # STEP 3 — Pixel boundary logic
     # =========================================================
-    # Head Apex (Top Point):
-    y_ears = (landmarks_dict['left_ear'][1] + landmarks_dict['right_ear'][1]) / 2.0
-    y_shoulders = (landmarks_dict['left_shoulder'][1] + landmarks_dict['right_shoulder'][1]) / 2.0
-    h_head = abs(y_shoulders - y_ears) * 1.2
-    y_top = int(y_ears - h_head)
-    
+    # Use the detected subject's top edge instead of extrapolating the crown
+    # from ear and shoulder landmarks, which can place it above the person.
+    y_top = y1
     mid_x = int((landmarks_dict['left_shoulder'][0] + landmarks_dict['right_shoulder'][0]) / 2.0)
     head_top = (mid_x, y_top)
 
@@ -516,11 +516,18 @@ def estimate_height(
     # =========================================================
     # STEP 4 — Geometric height calculation
     # =========================================================
-    estimated_cm = _pixel_to_real_height(float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm)
-    feet, inches = _cm_to_feet_inches(estimated_cm)
-    weight_features = _weight_features(
-        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, estimated_cm
+    geometric_cm = _pixel_to_real_height(
+        float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm
     )
+    weight_features = _weight_features(
+        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, geometric_cm
+    )
+    estimated_cm = (
+        float(height_calibrator(weight_features))
+        if height_calibrator is not None
+        else geometric_cm
+    )
+    feet, inches = _cm_to_feet_inches(estimated_cm)
 
     # Confidence: weighted blend of YOLOv8 box confidence + nose visibility
     pose_visibility = float(lms[0].visibility)
@@ -559,6 +566,7 @@ def estimate_height(
     return {
         "estimated_height_cm": round(estimated_cm, 1),
         "estimated_height_ft": f"{feet}' {inches}\"",
+        "geometric_height_cm": round(geometric_cm, 1),
         "confidence_score":    confidence,
         "pixel_height":        pixel_height,
         "bounding_box":        {"x1": x1, "y1": y1, "x2": x2, "y2": y2},

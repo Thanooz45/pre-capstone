@@ -35,7 +35,10 @@ class HeightResponse(BaseModel):
     )
     pixel_height: int = Field(
         ...,
-        description="Vertical pixel distance from estimated head-top to heel.",
+        description=(
+            "Vertical pixel distance from the detected person box's top edge "
+            "to the lowest visible heel/toe landmark."
+        ),
         example=412,
     )
     bounding_box: dict = Field(

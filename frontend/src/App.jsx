@@ -165,11 +165,11 @@ export default function App() {
     setError(null);
     setResult(null);
     setFeedbackSubmitted(false);
+    setShowFeedback(false);
     
     try {
       const res = await predictBody(file, mode === "height_weight" ? fileSide : null, cameraHeight, distance);
       setResult(res);
-      setTimeout(() => setShowFeedback(true), 2500);
     } catch (err) {
       const data = err.response?.data;
       setError(data?.error ?? data?.detail ?? "Unable to reach the server.");
@@ -188,14 +188,16 @@ export default function App() {
       alert("Please enter the person's name.");
       return;
     }
-    if (!actualHeight || !actualWeight) return;
+    const includeWeight = tab === "add_data" || mode === "height_weight";
+    if (!actualHeight || (includeWeight && !actualWeight)) return;
     
     setFeedbackLoading(true);
     try {
-      let hCm = parseFloat(actualHeight);
-      let wKg = parseFloat(actualWeight);
+      const hCm = parseFloat(actualHeight);
+      const wKg = includeWeight ? parseFloat(actualWeight) : null;
       
-      const response = await submitFeedback(file, fileSide, personName, hCm, wKg, cameraHeight, distance);
+      const feedbackMode = includeWeight ? "height_weight" : "height_only";
+      const response = await submitFeedback(file, fileSide, personName, hCm, wKg, cameraHeight, distance, feedbackMode);
       setShowFeedback(false);
       setFeedbackSubmitted(true);
       setDatasetRefresh((value) => value + 1);
@@ -213,6 +215,8 @@ export default function App() {
         setFeedbackSubmitted(true);
       } else {
         setPersonName(response.person_name);
+        setActualHeight("");
+        setActualWeight("");
       }
     } catch (err) {
       alert(err.response?.data?.detail ?? "Failed to submit data. Please try again.");
@@ -305,13 +309,13 @@ export default function App() {
         <div className="tabs">
           <button 
             className={`tab ${mode === 'height_only' ? 'active' : ''}`}
-            onClick={() => { setMode('height_only'); setFileSide(null); }}
+            onClick={() => { setMode('height_only'); setFileSide(null); setActualWeight(''); setFeedbackSubmitted(false); }}
           >
             Height Only (1 Image)
           </button>
           <button 
             className={`tab ${mode === 'height_weight' ? 'active' : ''}`}
-            onClick={() => setMode('height_weight')}
+            onClick={() => { setMode('height_weight'); setFeedbackSubmitted(false); }}
           >
             Height & Weight (2 Images) 
           </button>
@@ -346,7 +350,8 @@ export default function App() {
           {datasetPeople.length > 0 && (
             <div className="people-grid">
               {datasetPeople.map((person) => {
-                const modelImage = person.images.find((image) => image.dataset === "model_specification");
+                const modelImages = person.images.filter((image) => image.dataset === "model_specification");
+                const modelImage = modelImages.find((image) => image.weight_kg != null) ?? modelImages[0];
                 const isEditing = editingPerson === person.normalized_name;
                 return (
                   <article className="person-card" key={person.normalized_name}>
@@ -355,7 +360,7 @@ export default function App() {
                         <h3>{person.name}</h3>
                         <p className="person-measurement-summary">
                           {modelImage
-                            ? `Height: ${modelImage.height_cm} cm · Weight: ${modelImage.weight_kg} kg`
+                            ? `Height: ${modelImage.height_cm} cm${modelImage.weight_kg != null ? ` · Weight: ${modelImage.weight_kg} kg` : ""}`
                             : person.measurements.map((measurement, index) => (
                               <span key={index}>
                                 {measurement.height_cm != null && `Height: ${measurement.height_cm} cm`}
@@ -365,7 +370,7 @@ export default function App() {
                             ))}
                         </p>
                       </div>
-                      {modelImage && !isEditing && (
+                      {modelImage?.weight_kg != null && !isEditing && (
                         <button
                           type="button"
                           className="button-secondary person-edit-button"
@@ -587,7 +592,7 @@ export default function App() {
                   </div>
 
                   <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.95rem', color: '#6b7280' }}>
-                    <strong>Accuracy:</strong> {(result.confidence_score * 100).toFixed(1)}%
+                    <strong>Detection/pose score:</strong> {(result.confidence_score * 100).toFixed(1)}%
                   </p>
 
                   <div className="height">
@@ -619,12 +624,16 @@ export default function App() {
                       className="button-secondary"
                       style={{ marginTop: '16px' }}
                     >
-                      <Database size={18} /> Correct these measurements?
+                      <Database size={18} /> Help us improve
                     </button>
                   ) : (
                     <div className="feedback-banner">
                       <h3><CheckCircle size={20} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '6px' }}/> Thank you!</h3>
-                      <p style={{ margin: 0 }}>Your data has been submitted and the system is retraining in the background.</p>
+                      <p style={{ margin: 0 }}>
+                        {mode === "height_only"
+                          ? "Your name, image, and height were saved for height calibration. No weight was collected."
+                          : "Your name, image, and corrected height and weight were saved for model training."}
+                      </p>
                     </div>
                   )}
                 </>
@@ -712,8 +721,13 @@ export default function App() {
       {showFeedback && tab === 'predict' && (
         <div className="modal-overlay">
           <div className="modal">
-            <h3>Help us improve! 🚀</h3>
-            <p>Were these measurements precise? You can submit your actual height and weight to help the system learn continuously.</p>
+            <h3>Help us improve</h3>
+            <p>
+              {mode === "height_only"
+                ? "Submit your verified height to help improve height estimates. Weight is not requested in Height Only mode."
+                : "Submit your verified height and weight to help improve both estimates."}
+              {" "}Your name, image, and provided measurements will be saved in the project training dataset.
+            </p>
             
             <form onSubmit={handleDataSubmit}>
               <label>
@@ -733,23 +747,25 @@ export default function App() {
                     Actual Height (cm)
                   </label>
                   <input 
-                    type="number" step="0.1" required
+                    type="number" min="1" max="300" step="0.1" required
                     value={actualHeight} 
                     onChange={e => setActualHeight(e.target.value)} 
                     placeholder="175" 
                   />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                    Actual Weight (kg)
-                  </label>
-                  <input 
-                    type="number" step="0.1" required
-                    value={actualWeight} 
-                    onChange={e => setActualWeight(e.target.value)} 
-                    placeholder="70" 
-                  />
-                </div>
+                {mode === "height_weight" && (
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                      Actual Weight (kg)
+                    </label>
+                    <input
+                      type="number" min="1" max="500" step="0.1" required
+                      value={actualWeight}
+                      onChange={e => setActualWeight(e.target.value)}
+                      placeholder="70"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="modal-actions">
@@ -757,7 +773,9 @@ export default function App() {
                   Skip
                 </button>
                 <button type="submit" disabled={feedbackLoading}>
-                  {feedbackLoading ? <LoaderCircle className="spin" /> : <>Submit Data <ChevronRight size={18} /></>}
+                  {feedbackLoading
+                    ? <LoaderCircle className="spin" />
+                    : <>{mode === "height_only" ? "Submit height" : "Submit corrections"} <ChevronRight size={18} /></>}
                 </button>
               </div>
             </form>

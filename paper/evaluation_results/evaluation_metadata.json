@@ -1,9 +1,11 @@
 {
-  "created_at_utc": "2026-11-15T04:54:02.630730+00:00",
+  "created_at_utc": "2026-11-15T05:42:52.932759+00:00",
   "dataset_csv": "/Users/chintalapudithanooz/Documents/Projects/capstone/model_specification/height_weight_dataset.csv",
   "dataset_csv_sha256": "cc5f1feb7cc0c0fe84510ff663f906c38acef9e84c73628c50ec1015685555ed",
   "image_count": 120,
   "group_count": 28,
+  "weight_label_count": 120,
+  "weight_group_count": 28,
   "grouping_column": "person_id",
   "grouping_rule": "normalized participant_id values",
   "outer_folds": 5,
@@ -40,17 +42,17 @@
   "metrics_group_aggregated": {
     "raw_geometric_height_cm": {
       "n_groups": 28,
-      "mae": 32.32844577380953,
-      "rmse": 32.97238334873668,
-      "r2": -18.608410868504713,
-      "bias": -32.32844577380953
+      "mae": 39.27115273809523,
+      "rmse": 39.81359113031114,
+      "r2": -27.58935923129177,
+      "bias": -39.27115273809523
     },
     "calibrated_height_cm": {
       "n_groups": 28,
-      "mae": 4.855105013085838,
-      "rmse": 6.232107765598955,
-      "r2": 0.2994943756508228,
-      "bias": -0.8887071073117829
+      "mae": 4.787617872629,
+      "rmse": 6.103816395235868,
+      "r2": 0.3280381140450115,
+      "bias": -0.866753805440444
     },
     "training_fold_median_height_cm": {
       "n_groups": 28,
@@ -61,10 +63,10 @@
     },
     "weight_kg": {
       "n_groups": 28,
-      "mae": 6.5306156020236354,
-      "rmse": 7.7976868173484,
-      "r2": 0.5792821886914662,
-      "bias": -0.26956018804828324
+      "mae": 6.086242979397148,
+      "rmse": 7.305211959574682,
+      "r2": 0.6307462074623689,
+      "bias": -0.635780433587579
     },
     "training_fold_median_weight_kg": {
       "n_groups": 28,
