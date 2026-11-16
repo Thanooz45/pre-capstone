@@ -83,23 +83,6 @@ img_081,person_022,Afzal,images/afzal_150F.jpg,front,150,100,164.0,77.0
 img_082,person_022,Afzal,images/afzal_150S.jpg,side,150,100,164.0,77.0
 img_083,person_022,Afzal,images/afzal_200F.jpg,front,200,100,164.0,77.0
 img_084,person_022,Afzal,images/afzal_200S.jpg,side,200,100,164.0,77.0
-img_085,person_023,Nithin,images/IMG20260902205329.jpg.jpeg,unknown,200,100,170.69,60.0
-img_086,person_024,Sai Bhargav,images/IMG20260902205132.jpg.jpeg,unknown,200,100,173.74,68.0
-img_087,person_007,Prasanth,images/IMG20260902204717.jpg.jpeg,unknown,200,100,167.64,51.0
-img_088,person_001,Siva,images/IMG20260902205119.jpg.jpeg,unknown,200,100,158.5,56.0
-img_089,person_004,Kanth,images/IMG20260902204953.jpg.jpeg,unknown,200,100,152.4,46.0
-img_090,person_017,Venkey,images/IMG20260902205101.jpg.jpeg,unknown,200,100,180.34,80.0
-img_091,person_025,Bhardwaj,images/IMG20260902205433.jpg.jpeg,unknown,200,100,175.26,90.0
-img_092,person_013,Chethan,images/IMG20260906142706.jpg.jpeg,unknown,200,100,167.0,69.0
-img_093,person_026,Bindu bhargav,images/IMG20260906142628.jpg.jpeg,unknown,200,100,164.0,81.0
-img_094,person_009,Shafi,images/IMG20260906144215.jpg.jpeg,unknown,200,100,161.0,65.0
-img_095,person_003,Balaji,images/IMG20260906143530.jpg.jpeg,unknown,200,100,154.0,55.0
-img_096,person_002,Santhosh,images/IMG20260906142846.jpg.jpeg,unknown,200,100,174.0,87.0
-img_097,person_027,subbaraydu,images/IMG20260906143558.jpg.jpeg,unknown,200,100,158.0,76.0
-img_098,person_006,Srinu,images/IMG20260906143051.jpg.jpeg,unknown,200,100,158.0,45.0
-img_099,person_011,Eswar,images/IMG20260906142537.jpg.jpeg,unknown,200,100,174.0,64.0
-img_100,person_018,Prem,images/IMG20260906143802.jpg.jpeg,unknown,200,100,170.0,68.0
-img_101,person_012,Hemanth,images/IMG20260906142515.jpg.jpeg,unknown,200,100,160.02,50.0
 img_102,person_019,Vijay,images/eff953b6-df28-4141-98a4-b2b32f5e656c.jpeg,unknown,200,100,168.0,65.0
 img_103,person_001,Siva,images/01_siva_150cm.jpeg,unknown,150,100,158.5,56.0
 img_104,person_006,Srinu,images/02_srinu_150cm.jpeg,unknown,150,100,158.0,45.0
@@ -117,5 +100,54 @@ img_115,person_026,Bindu bhargav,images/13_bindu_bhargav_150cm.jpeg,unknown,150,
 img_116,person_010,Manoj,images/14_manoj_150cm.jpeg,unknown,150,100,157.0,50.0
 img_117,person_012,Hemanth,images/15_hemanth.jpeg,unknown,150,100,160.02,50.0
 img_118,person_009,Shafi,images/16_shafi.jpeg,unknown,150,100,161.0,65.0
-img_119,person_028,Venkeswaro,images/17_venkeswaro.jpeg,unknown,150,100,168.0,61.0
 img_120,person_027,subbaraydu,images/18_subbaraydu.jpeg,unknown,150,100,158.0,76.0
+img_121,person_025,Bhardwaj,images/Bhardwaj_150S.jpeg,side,150,100,175.26,90.0
+img_122,person_025,Bhardwaj,images/Bhardwaj_200S.jpeg,side,200,100,175.26,90.0
+img_123,person_028,Venkeswaro,images/Venkeswaro_150F.jpeg,front,150,100,168.0,61.0
+img_124,person_028,Venkeswaro,images/Venkeswaro_150S.jpeg,side,150,100,168.0,61.0
+img_125,person_028,Venkeswaro,images/Venkeswaro_200F.jpeg,front,200,100,168.0,61.0
+img_126,person_028,Venkeswaro,images/Venkeswaro_200S.jpeg,side,200,100,168.0,61.0
+img_128,person_030,Ratna,images/ratna_150F.jpeg,front,150.0,100.0,171.5,76.0
+img_129,person_030,Ratna,images/ratna_150S.jpeg,side,150.0,100.0,171.5,76.0
+img_130,person_030,Ratna,images/ratna_168F.jpeg,front,168.0,100.0,171.5,76.0
+img_131,person_030,Ratna,images/ratna_168S.jpeg,side,168.0,100.0,171.5,76.0
+img_132,person_031,sri charan,images/sri_charan_200F.jpeg,front,200.0,100.0,173.0,54.5
+img_133,person_031,sri charan,images/sri_charan_200S.jpeg,side,200.0,100.0,173.0,54.5
+img_134,person_031,sri charan,images/sri_charan_140F.jpeg,front,140.0,100.0,173.0,54.5
+img_135,person_031,sri charan,images/sri_charan_140S.jpeg,side,140.0,100.0,173.0,54.5
+img_136,person_032,charan preeth,images/charan_preeth_180F.jpeg,front,180.0,100.0,170.5,90.0
+img_137,person_032,charan preeth,images/charan_preeth_180S.jpeg,side,180.0,100.0,170.5,90.0
+img_138,person_032,charan preeth,images/charan_preeth_150F.jpeg,front,150.0,100.0,170.5,90.0
+img_139,person_032,charan preeth,images/charan_preeth_150S.jpeg,side,150.0,100.0,170.5,90.0
+img_140,person_033,mukesh,images/mukesh_180F.jpeg,front,180.0,100.0,165.5,71.0
+img_141,person_033,mukesh,images/mukesh_180S.jpeg,side,180.0,100.0,165.5,71.0
+img_142,person_033,mukesh,images/mukesh_140F.jpeg,front,140.0,100.0,167.0,71.0
+img_143,person_033,mukesh,images/mukesh_140S.jpeg,side,140.0,100.0,167.0,71.0
+img_144,person_034,gaurav,images/gaurav_140F.jpeg,front,140.0,100.0,156.0,60.0
+img_145,person_034,gaurav,images/gaurav_140S.jpeg,side,140.0,100.0,156.0,60.0
+img_146,person_034,gaurav,images/gaurav_180F.jpeg,front,180.0,100.0,156.0,60.0
+img_147,person_034,gaurav,images/gaurav_180S.jpeg,side,180.0,100.0,156.0,60.0
+img_148,person_035,vamsi,images/vamsi_180F.jpeg,front,180.0,100.0,180.0,90.0
+img_149,person_035,vamsi,images/vamsi_180S.jpeg,side,180.0,100.0,180.0,90.0
+img_150,person_035,vamsi,images/vamsi_150F.jpeg,front,150.0,100.0,180.0,90.0
+img_151,person_035,vamsi,images/vamsi_150S.jpeg,side,150.0,100.0,180.0,90.0
+img_152,person_036,siva karthik,images/siva_karthik_140F.jpeg,front,140.0,100.0,170.0,50.0
+img_153,person_036,siva karthik,images/siva_karthik_140S.jpeg,side,140.0,100.0,170.0,50.0
+img_154,person_036,siva karthik,images/siva_karthik_185F.jpeg,front,185.0,100.0,170.0,50.0
+img_155,person_036,siva karthik,images/siva_karthik_185S.jpeg,side,185.0,100.0,170.0,50.0
+img_156,person_037,sreemanth,images/sreemanth_135F.jpeg,front,135.0,100.0,170.0,50.0
+img_157,person_037,sreemanth,images/sreemanth_135S.jpeg,side,135.0,100.0,170.0,50.0
+img_158,person_037,sreemanth,images/sreemanth_180F.jpeg,front,180.0,100.0,170.0,50.0
+img_159,person_037,sreemanth,images/sreemanth_180S.jpeg,side,180.0,100.0,170.0,50.0
+img_160,person_038,roshith,images/roshith_180F.jpeg,front,180.0,100.0,177.5,69.0
+img_161,person_038,roshith,images/roshith_180S.jpeg,side,180.0,100.0,177.5,69.0
+img_162,person_038,roshith,images/roshith_140F.jpeg,front,140.0,100.0,177.5,69.0
+img_163,person_038,roshith,images/roshith_140S.jpeg,side,140.0,100.0,177.5,69.0
+img_164,person_039,dinesh,images/dinesh_185F.jpeg,front,185.0,100.0,175.0,87.0
+img_165,person_039,dinesh,images/dinesh_185S.jpeg,side,185.0,100.0,175.0,87.0
+img_166,person_039,dinesh,images/dinesh_140F.jpeg,front,140.0,100.0,175.0,87.0
+img_167,person_039,dinesh,images/dinesh_140S.jpeg,side,140.0,100.0,175.0,87.0
+img_168,person_040,aditya,images/aditya_150F.jpeg,front,150.0,100.0,179.5,55.0
+img_169,person_040,aditya,images/aditya_150S.jpeg,side,150.0,100.0,179.5,55.0
+img_170,person_040,aditya,images/aditya_190F.jpeg,front,190.0,100.0,179.5,55.0
+img_171,person_040,aditya,images/aditya_190S.jpeg,side,190.0,100.0,179.5,55.0

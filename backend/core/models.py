@@ -93,3 +93,9 @@ class DatasetPersonUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     height_cm: float = Field(..., gt=0, le=300)
     weight_kg: float = Field(..., gt=0, le=500)
+
+
+class DatasetPersonDelete(BaseModel):
+    """Participant to remove from the training cohort."""
+
+    current_name: str = Field(..., min_length=1, max_length=100)

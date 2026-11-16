@@ -12,7 +12,6 @@ from pathlib import Path
 
 import numpy as np
 from joblib import dump
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import GridSearchCV, GroupKFold
@@ -83,12 +82,7 @@ def _grouped_height_oof(features, heights, groups):
 
 
 def _new_weight_model():
-    return RandomForestRegressor(
-        n_estimators=300,
-        min_samples_leaf=2,
-        max_features=0.8,
-        random_state=42,
-    )
+    return make_pipeline(StandardScaler(), Ridge(alpha=1.0))
 
 
 def _grouped_targets_predictions(targets, predictions, groups):

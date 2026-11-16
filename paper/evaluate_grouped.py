@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, GroupKFold
@@ -357,12 +356,7 @@ def main() -> None:
         weight_test_features = features[test_weight_indices].copy()
         weight_test_features[:, height_index] = height_oof[test_weight_indices]
 
-        regressor = RandomForestRegressor(
-            n_estimators=300,
-            min_samples_leaf=2,
-            max_features=0.8,
-            random_state=42,
-        )
+        regressor = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
         regressor.fit(weight_train_features, weights[train_weight_indices])
         weight_oof[test_weight_indices] = regressor.predict(weight_test_features)
         weight_median_oof[test_weight_indices] = _group_median(
@@ -477,11 +471,9 @@ def main() -> None:
         "outer_folds": outer_fold_count,
         "inner_folds_max": MAX_CV_FOLDS,
         "ridge_alpha_candidates": ALPHAS,
-        "random_forest": {
-            "n_estimators": 300,
-            "min_samples_leaf": 2,
-            "max_features": 0.8,
-            "random_state": 42,
+        "weight_model": {
+            "type": "StandardScaler + Ridge",
+            "alpha": 1.0,
         },
         "feature_names": list(FEATURE_NAMES),
         "versions": {

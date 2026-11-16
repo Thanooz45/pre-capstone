@@ -38,6 +38,32 @@ export async function updateDatasetPerson(currentName, name, height, weight) {
   return data;
 }
 
+export async function deleteDatasetPerson(currentName) {
+  const { data } = await api.delete("/dataset/people", {
+    data: { current_name: currentName },
+  });
+  return data;
+}
+
+export async function deleteDatasetImage(datasetKey, imageName) {
+  const { data } = await api.delete(
+    `/dataset/images/${encodeURIComponent(datasetKey)}/${encodeURIComponent(imageName)}`,
+  );
+  return data;
+}
+
+export async function downloadTrainingDatasetCsv() {
+  const { data } = await api.get("/dataset/download", { responseType: "blob" });
+  const url = URL.createObjectURL(data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "height_weight_dataset.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function lookupDatasetPerson(file, personName = "") {
   const body = new FormData();
   body.append("file", file);

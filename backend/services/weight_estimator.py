@@ -70,7 +70,7 @@ def estimate_weight(features: dict) -> dict:
     values = np.array([[features[name] for name in FEATURE_NAMES]], dtype=float)
     prediction = float(_weight_model.predict(values)[0])
 
-    # Tree spread gives a useful, conservative visual-only uncertainty range.
+    # Use tree spread when available; non-tree models fall back to a fixed range.
     trees = getattr(_weight_model, "estimators_", [])
     if trees:
         tree_predictions = np.array([tree.predict(values)[0] for tree in trees], dtype=float)

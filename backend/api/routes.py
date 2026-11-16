@@ -28,7 +28,12 @@ from fastapi import (
 from fastapi.responses import FileResponse, JSONResponse
 
 from core.config import settings
-from core.models import DatasetPersonUpdate, HeightResponse, ErrorResponse
+from core.models import (
+    DatasetPersonDelete,
+    DatasetPersonUpdate,
+    HeightResponse,
+    ErrorResponse,
+)
 from services.dataset_catalog import (
     DATASETS,
     find_image_records_by_hash,
@@ -210,6 +215,19 @@ def dataset_people(
         ) from exc
 
 
+@router.get("/dataset/download", summary="Download the active training cohort as CSV")
+def download_dataset_csv():
+    dataset = DATASETS["model_specification"]
+    csv_path = dataset["directory"] / dataset["csv"]
+    if not csv_path.is_file():
+        raise HTTPException(status_code=404, detail="The training cohort was not found.")
+    return FileResponse(
+        csv_path,
+        media_type="text/csv",
+        filename=dataset["csv"],
+    )
+
+
 @router.put("/dataset/people", summary="Update a participant in the training cohort")
 def update_dataset_person(
     update: DatasetPersonUpdate,
@@ -300,6 +318,224 @@ def update_dataset_person(
         raise HTTPException(
             status_code=500,
             detail="Unable to update the person's dataset records.",
+        ) from exc
+
+
+@router.delete("/dataset/people", summary="Delete a participant from the training cohort")
+def delete_dataset_person(
+    deletion: DatasetPersonDelete,
+    background_tasks: BackgroundTasks,
+):
+    dataset = DATASETS["model_specification"]
+    dataset_dir = dataset["directory"]
+    csv_path = dataset_dir / dataset["csv"]
+    if not csv_path.is_file():
+        raise HTTPException(status_code=404, detail="The training cohort was not found.")
+
+    current_name = " ".join(deletion.current_name.split())
+    current_key = " ".join(current_name.casefold().split())
+    if not current_key:
+        raise HTTPException(status_code=422, detail="Person name cannot be empty.")
+
+    temporary_csv_path = None
+    try:
+        with csv_path.open(newline="", encoding="utf-8-sig") as source:
+            reader = csv.DictReader(source)
+            fieldnames = reader.fieldnames or []
+            if {"person_name", "image_path"} - set(fieldnames):
+                raise ValueError("The training-cohort table has an invalid schema.")
+            rows = list(reader)
+
+        matching_rows = [
+            row
+            for row in rows
+            if " ".join(row["person_name"].casefold().split()) == current_key
+        ]
+        if not matching_rows:
+            raise HTTPException(
+                status_code=404,
+                detail="No training-cohort records were found for that participant.",
+            )
+
+        remaining_rows = [
+            row
+            for row in rows
+            if " ".join(row["person_name"].casefold().split()) != current_key
+        ]
+        images_dir = (dataset_dir / "images").resolve()
+
+        def image_path_for_row(row):
+            image_reference = row.get("image_path", "").strip()
+            if not image_reference:
+                return None
+            image_path = (dataset_dir / image_reference).resolve()
+            if image_path == images_dir or not image_path.is_relative_to(images_dir):
+                return None
+            return image_path
+
+        remaining_image_paths = {
+            image_path
+            for row in remaining_rows
+            if (image_path := image_path_for_row(row)) is not None
+        }
+        image_paths_to_remove = {
+            image_path
+            for row in matching_rows
+            if (image_path := image_path_for_row(row)) is not None
+            and image_path not in remaining_image_paths
+        }
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=dataset_dir,
+            prefix=".height-weight-dataset-",
+            suffix=".tmp",
+            delete=False,
+        ) as destination:
+            temporary_csv_path = Path(destination.name)
+            writer = csv.DictWriter(destination, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(remaining_rows)
+        os.replace(temporary_csv_path, csv_path)
+        temporary_csv_path = None
+
+        deleted_images = 0
+        image_cleanup_errors = 0
+        for image_path in image_paths_to_remove:
+            try:
+                if image_path.is_file():
+                    image_path.unlink()
+                    deleted_images += 1
+            except OSError:
+                image_cleanup_errors += 1
+                logger.exception("Unable to remove a deleted participant's image")
+
+        background_tasks.add_task(run_training_task)
+        return {
+            "message": "Person records deleted; model retraining has started.",
+            "person_name": current_name,
+            "deleted_records": len(matching_rows),
+            "deleted_images": deleted_images,
+            "image_cleanup_errors": image_cleanup_errors,
+            "training_started": True,
+        }
+    except HTTPException:
+        if temporary_csv_path:
+            temporary_csv_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        if temporary_csv_path:
+            temporary_csv_path.unlink(missing_ok=True)
+        logger.exception("Unable to delete training-cohort participant")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete the person's dataset records.",
+        ) from exc
+
+
+@router.delete(
+    "/dataset/images/{dataset_key}/{image_name}",
+    summary="Delete an image and its training records",
+)
+def delete_dataset_image(
+    dataset_key: str,
+    image_name: str,
+    background_tasks: BackgroundTasks,
+):
+    dataset = DATASETS.get(dataset_key)
+    if dataset is None or Path(image_name).name != image_name:
+        raise HTTPException(status_code=404, detail="Dataset image not found.")
+
+    dataset_dir = dataset["directory"]
+    images_dir = (dataset_dir / "images").resolve()
+    image_path = (images_dir / image_name).resolve()
+    if not image_path.is_relative_to(images_dir) or not image_path.is_file():
+        raise HTTPException(status_code=404, detail="Dataset image not found.")
+
+    csv_path = dataset_dir / dataset["csv"]
+    if not csv_path.is_file():
+        raise HTTPException(status_code=404, detail="The training cohort was not found.")
+
+    temporary_csv_path = None
+    try:
+        with csv_path.open(newline="", encoding="utf-8-sig") as source:
+            reader = csv.DictReader(source)
+            fieldnames = reader.fieldnames or []
+            image_columns = [column for column, _ in dataset["images"]]
+            if not image_columns or set(image_columns) - set(fieldnames):
+                raise ValueError("The training-cohort table has an invalid schema.")
+            rows = list(reader)
+
+        def references_image(row):
+            for column in image_columns:
+                image_reference = row.get(column, "").strip()
+                if not image_reference:
+                    continue
+                if dataset.get("image_paths"):
+                    row_image_path = (dataset_dir / image_reference).resolve()
+                else:
+                    if Path(image_reference).name != image_reference:
+                        continue
+                    row_image_path = (images_dir / image_reference).resolve()
+                if (
+                    row_image_path.is_relative_to(images_dir)
+                    and row_image_path == image_path
+                ):
+                    return True
+            return False
+
+        matching_rows = [row for row in rows if references_image(row)]
+        if not matching_rows:
+            raise HTTPException(
+                status_code=404,
+                detail="No training-cohort records were found for that image.",
+            )
+        remaining_rows = [row for row in rows if not references_image(row)]
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=dataset_dir,
+            prefix=".height-weight-dataset-",
+            suffix=".tmp",
+            delete=False,
+        ) as destination:
+            temporary_csv_path = Path(destination.name)
+            writer = csv.DictWriter(destination, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(remaining_rows)
+        os.replace(temporary_csv_path, csv_path)
+        temporary_csv_path = None
+
+        image_cleanup_error = False
+        try:
+            image_path.unlink()
+        except OSError:
+            image_cleanup_error = True
+            logger.exception("Unable to remove deleted training image %s", image_name)
+
+        background_tasks.add_task(run_training_task)
+        return {
+            "message": "Image records deleted; model retraining has started.",
+            "image_name": image_name,
+            "deleted_records": len(matching_rows),
+            "image_cleanup_error": image_cleanup_error,
+            "training_started": True,
+        }
+    except HTTPException:
+        if temporary_csv_path:
+            temporary_csv_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        if temporary_csv_path:
+            temporary_csv_path.unlink(missing_ok=True)
+        logger.exception("Unable to delete training-cohort image")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete the image's dataset records.",
         ) from exc
 
 

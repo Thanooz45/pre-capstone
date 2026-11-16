@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Camera, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, X } from "lucide-react";
-import { datasetImageUrl, getDatasetPeople, lookupDatasetPerson, predictBody, submitFeedback, updateDatasetPerson } from "./services/api";
+import { Camera, Download, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, Trash2, X } from "lucide-react";
+import { datasetImageUrl, deleteDatasetImage, deleteDatasetPerson, downloadTrainingDatasetCsv, getDatasetPeople, lookupDatasetPerson, predictBody, submitFeedback, updateDatasetPerson } from "./services/api";
 
 export default function App() {
   const [tab, setTab] = useState("predict"); // 'predict', 'add_data', or 'dataset'
@@ -43,6 +43,11 @@ export default function App() {
   const [personSaveLoading, setPersonSaveLoading] = useState(false);
   const [personSaveError, setPersonSaveError] = useState(null);
   const [personSaveMessage, setPersonSaveMessage] = useState(null);
+  const [datasetMutation, setDatasetMutation] = useState(null);
+  const [personDeleteError, setPersonDeleteError] = useState(null);
+  const [imageDeleteError, setImageDeleteError] = useState(null);
+  const [datasetDownloadLoading, setDatasetDownloadLoading] = useState(false);
+  const [datasetDownloadError, setDatasetDownloadError] = useState(null);
 
   useEffect(() => {
     if (file) {
@@ -260,6 +265,82 @@ export default function App() {
     }
   }
 
+  async function deletePerson(person) {
+    if (!window.confirm(
+      `Delete ${person.name} and all of their training records? Images not shared with other records will also be deleted. This cannot be undone.`
+    )) {
+      return;
+    }
+
+    setDatasetMutation({ type: "person", key: person.normalized_name });
+    setPersonDeleteError(null);
+    setPersonSaveMessage(null);
+    try {
+      const response = await deleteDatasetPerson(person.name);
+      setPersonSaveMessage(
+        response.image_cleanup_errors > 0
+          ? `${person.name} was removed from the training data, but some associated images could not be deleted. Model retraining has started.`
+          : `${person.name} was removed from the training data. Model retraining has started.`
+      );
+      if (datasetPeople.length === 1 && datasetPage > 0) {
+        setDatasetPage((page) => page - 1);
+      }
+      setDatasetRefresh((value) => value + 1);
+    } catch (err) {
+      setPersonDeleteError({
+        name: person.normalized_name,
+        message: err.response?.data?.detail ?? "Unable to delete this participant.",
+      });
+    } finally {
+      setDatasetMutation(null);
+    }
+  }
+
+  async function deletePersonImage(person, image) {
+    const imageKey = `${image.dataset}/${image.name}`;
+    if (!window.confirm(
+      `Remove ${image.name} from ${person.name}'s training data? All training records using this image will be deleted.`
+    )) {
+      return;
+    }
+
+    setDatasetMutation({ type: "image", key: imageKey });
+    setImageDeleteError(null);
+    setPersonSaveMessage(null);
+    try {
+      const response = await deleteDatasetImage(image.dataset, image.name);
+      setPersonSaveMessage(
+        response.image_cleanup_error
+          ? `${image.name} was removed from the training records, but the image file could not be deleted. Model retraining has started.`
+          : `${image.name} was removed from ${person.name}'s training data. Model retraining has started.`
+      );
+      if (person.images.length === 1 && datasetPeople.length === 1 && datasetPage > 0) {
+        setDatasetPage((page) => page - 1);
+      }
+      setDatasetRefresh((value) => value + 1);
+    } catch (err) {
+      setImageDeleteError({
+        key: imageKey,
+        message: err.response?.data?.detail ?? "Unable to delete this image.",
+      });
+    } finally {
+      setDatasetMutation(null);
+    }
+  }
+
+  async function downloadDatasetCsv() {
+    setDatasetDownloadLoading(true);
+    setDatasetDownloadError(null);
+    try {
+      await downloadTrainingDatasetCsv();
+      setPersonSaveMessage("Training dataset CSV downloaded.");
+    } catch {
+      setDatasetDownloadError("Unable to download the training dataset. Check that the backend is running.");
+    } finally {
+      setDatasetDownloadLoading(false);
+    }
+  }
+
   return (
     <main>
       <header>
@@ -324,9 +405,28 @@ export default function App() {
 
       {tab === "dataset" ? (
         <section className="dataset-page">
-          <div className="panel">
-            <h2><UsersRound /> Participant-ID Training Cohort</h2>
-            <p>Search and edit the active training cohort only. Dataset search and exact-image lookup are limited to these participant records.</p>
+          <div className="panel dataset-header">
+            <div className="dataset-header-top">
+              <div className="dataset-title">
+                <span className="dataset-title-icon"><UsersRound size={22} /></span>
+                <div>
+                  <p className="dataset-eyebrow">DATA MANAGEMENT</p>
+                  <h2>Training dataset</h2>
+                  <p>Review participant records, images, and measurements.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="button-secondary dataset-download-button"
+                onClick={downloadDatasetCsv}
+                disabled={datasetDownloadLoading}
+              >
+                {datasetDownloadLoading
+                  ? <LoaderCircle className="spin" size={18} />
+                  : <Download size={18} />}
+                {datasetDownloadLoading ? "Preparing CSV…" : "Download CSV"}
+              </button>
+            </div>
             <label className="dataset-search">
               <Search size={18} />
               <input
@@ -339,12 +439,13 @@ export default function App() {
                 placeholder="Search names, e.g. Bhargav"
               />
             </label>
-            <p className="dataset-count">
-              {datasetLoading
-                ? "Loading training cohort…"
-                : `${datasetImageCount} images · ${datasetTotal}${datasetSearch ? " matching" : ""} participant${datasetTotal === 1 ? "" : "s"}`}
-            </p>
+            <div className="dataset-count">
+              <span><ImageUp size={16} /> {datasetImageCount} images</span>
+              <span><UsersRound size={16} /> {datasetTotal}{datasetSearch ? " matching" : ""} participant{datasetTotal === 1 ? "" : "s"}</span>
+              {datasetLoading && <span className="dataset-loading"><LoaderCircle className="spin" size={15} /> Refreshing…</span>}
+            </div>
             {datasetError && <div className="error">{datasetError}</div>}
+            {datasetDownloadError && <div className="error">{datasetDownloadError}</div>}
           </div>
 
           {datasetPeople.length > 0 && (
@@ -370,17 +471,36 @@ export default function App() {
                             ))}
                         </p>
                       </div>
-                      {modelImage?.weight_kg != null && !isEditing && (
-                        <button
-                          type="button"
-                          className="button-secondary person-edit-button"
-                          onClick={() => startEditingPerson(person, modelImage)}
-                        >
-                          <Pencil size={16} /> Edit
-                        </button>
+                      {!isEditing && (
+                        <div className="person-card-actions">
+                          {modelImage?.weight_kg != null && (
+                            <button
+                              type="button"
+                              className="button-secondary person-edit-button"
+                              onClick={() => startEditingPerson(person, modelImage)}
+                            >
+                              <Pencil size={16} /> Edit
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="button-danger person-edit-button"
+                            onClick={() => deletePerson(person)}
+                            disabled={datasetMutation !== null}
+                          >
+                            {datasetMutation?.type === "person" && datasetMutation.key === person.normalized_name
+                              ? <LoaderCircle className="spin" size={16} />
+                              : <Trash2 size={16} />}
+                            {datasetMutation?.type === "person" && datasetMutation.key === person.normalized_name
+                              ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
                       )}
                     </div>
 
+                    {personDeleteError?.name === person.normalized_name && (
+                      <div className="error">{personDeleteError.message}</div>
+                    )}
                     {isEditing && (
                       <form className="person-edit-form" onSubmit={savePersonEdits}>
                         <label>
@@ -411,12 +531,33 @@ export default function App() {
                     )}
 
                     <div className="person-images">
-                      {person.images.map((image) => (
-                        <div className="person-image" key={`${image.dataset}-${image.name}`}>
-                          <img src={datasetImageUrl(image.url)} alt={`${person.name} ${image.view ?? "dataset"} image`} loading="lazy" />
-                          <small>{image.view ? `${image.view} · ` : ""}{image.name}</small>
-                        </div>
-                      ))}
+                      {person.images.map((image) => {
+                        const imageKey = `${image.dataset}/${image.name}`;
+                        const isDeleting = datasetMutation?.type === "image" && datasetMutation.key === imageKey;
+                        return (
+                          <div className="person-image" key={imageKey}>
+                            <div className="person-image-preview">
+                              <img src={datasetImageUrl(image.url)} alt={`${person.name} ${image.view ?? "dataset"} image`} loading="lazy" />
+                              <button
+                                type="button"
+                                className="person-image-delete"
+                                onClick={() => deletePersonImage(person, image)}
+                                disabled={datasetMutation !== null}
+                                aria-label={`Delete ${image.name} from ${person.name}'s training data`}
+                                title="Delete image"
+                              >
+                                {isDeleting
+                                  ? <LoaderCircle className="spin" size={16} />
+                                  : <Trash2 size={16} />}
+                              </button>
+                            </div>
+                            <small>{image.view ? `${image.view} · ` : ""}{image.name}</small>
+                            {imageDeleteError?.key === imageKey && (
+                              <span className="image-delete-error">{imageDeleteError.message}</span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </article>
                 );
