@@ -1,11 +1,12 @@
 {
-  "created_at_utc": "2026-11-15T07:29:05.858814+00:00",
+  "created_at_utc": "2026-11-16T19:01:30.128641+00:00",
   "dataset_csv": "/Users/chintalapudithanooz/Documents/Projects/capstone/model_specification/height_weight_dataset.csv",
-  "dataset_csv_sha256": "27e1f75ef7fdf4da0354acb08840825731c290768e9e41b0433b38fab6dbe19a",
-  "image_count": 108,
-  "group_count": 26,
-  "weight_label_count": 108,
-  "weight_group_count": 26,
+  "dataset_csv_sha256": "fe00e5ed2682e1b8b953d4d03593f6c6c9defb2240ab238ea1b972f85ab50fd9",
+  "excluded_missing_image_count": 1,
+  "image_count": 151,
+  "group_count": 37,
+  "weight_label_count": 151,
+  "weight_group_count": 37,
   "grouping_column": "person_id",
   "grouping_rule": "normalized participant_id values",
   "outer_folds": 5,
@@ -19,6 +20,11 @@
   "weight_model": {
     "type": "StandardScaler + Ridge",
     "alpha": 1.0
+  },
+  "weight_height_feature": {
+    "evaluation": "out-of-fold calibrated height",
+    "saved_model_training": "out-of-fold calibrated height",
+    "inference": "calibrated height"
   },
   "feature_names": [
     "estimated_height_cm",
@@ -39,39 +45,39 @@
   },
   "metrics_group_aggregated": {
     "raw_geometric_height_cm": {
-      "n_groups": 26,
-      "mae": 38.02297769230769,
-      "rmse": 38.37947216159173,
-      "r2": -25.270066321359913,
-      "bias": -38.02297769230769
+      "n_groups": 37,
+      "mae": 36.57806405405406,
+      "rmse": 36.98553828310977,
+      "r2": -21.56247412663335,
+      "bias": -36.57806405405406
     },
     "calibrated_height_cm": {
-      "n_groups": 26,
-      "mae": 4.539920932884489,
-      "rmse": 5.276610510925388,
-      "r2": 0.5034382640727065,
-      "bias": 0.4261813345462166
+      "n_groups": 37,
+      "mae": 4.143161674431233,
+      "rmse": 5.070821304861889,
+      "r2": 0.5758890882308775,
+      "bias": 0.6261849389621653
     },
     "training_fold_median_height_cm": {
-      "n_groups": 26,
-      "mae": 7.761538461538459,
-      "rmse": 8.910919835106375,
-      "r2": -0.41614670916744756,
-      "bias": 0.28307692307692034
+      "n_groups": 37,
+      "mae": 7.110675675675677,
+      "rmse": 8.563537212775723,
+      "r2": -0.20956500198396433,
+      "bias": 1.235810810810809
     },
     "weight_kg": {
-      "n_groups": 26,
-      "mae": 5.168586993268392,
-      "rmse": 6.602931567487314,
-      "r2": 0.7161744901088564,
-      "bias": -0.561382771434513
+      "n_groups": 37,
+      "mae": 7.277148685316031,
+      "rmse": 8.76988853664591,
+      "r2": 0.5599670526998927,
+      "bias": 0.46801626195122237
     },
     "training_fold_median_weight_kg": {
-      "n_groups": 26,
-      "mae": 10.346153846153847,
-      "rmse": 12.52305566053761,
-      "r2": -0.020935853853487618,
-      "bias": 0.5769230769230769
+      "n_groups": 37,
+      "mae": 11.216216216216216,
+      "rmse": 13.348246164784184,
+      "r2": -0.019401955867602627,
+      "bias": 0.6486486486486487
     }
   },
   "predictions_csv": "grouped_predictions.csv"

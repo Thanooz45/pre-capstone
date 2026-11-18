@@ -48,6 +48,7 @@ export default function App() {
   const [imageDeleteError, setImageDeleteError] = useState(null);
   const [datasetDownloadLoading, setDatasetDownloadLoading] = useState(false);
   const [datasetDownloadError, setDatasetDownloadError] = useState(null);
+  const [selectedDatasetImage, setSelectedDatasetImage] = useState(null);
 
   useEffect(() => {
     if (file) {
@@ -68,6 +69,24 @@ export default function App() {
       setPreviewSide(null);
     }
   }, [fileSide]);
+
+  useEffect(() => {
+    if (!selectedDatasetImage) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setSelectedDatasetImage(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedDatasetImage]);
 
   useEffect(() => {
     if (tab !== "dataset") return undefined;
@@ -537,7 +556,19 @@ export default function App() {
                         return (
                           <div className="person-image" key={imageKey}>
                             <div className="person-image-preview">
-                              <img src={datasetImageUrl(image.url)} alt={`${person.name} ${image.view ?? "dataset"} image`} loading="lazy" />
+                              <button
+                                type="button"
+                                className="person-image-open"
+                                onClick={() => setSelectedDatasetImage({
+                                  url: datasetImageUrl(image.url),
+                                  alt: `${person.name} ${image.view ?? "dataset"} image`,
+                                  title: `${person.name}${image.view ? ` · ${image.view}` : ""}`,
+                                })}
+                                aria-label={`View full-size ${image.view ?? "dataset"} image for ${person.name}`}
+                                aria-haspopup="dialog"
+                              >
+                                <img src={datasetImageUrl(image.url)} alt="" loading="lazy" />
+                              </button>
                               <button
                                 type="button"
                                 className="person-image-delete"
@@ -723,11 +754,35 @@ export default function App() {
                 <>
                   <div className={result.annotated_image_base64_side ? "images-row" : ""}>
                     <div>
-                      <img src={`data:image/jpeg;base64,${result.annotated_image_base64}`} alt="Front Analysis" style={{ borderRadius: '12px' }} />
+                      <button
+                        type="button"
+                        className="result-image-open"
+                        onClick={() => setSelectedDatasetImage({
+                          url: `data:image/jpeg;base64,${result.annotated_image_base64}`,
+                          alt: "Front-view pose and height analysis with detected joints",
+                          title: "Front view · Pose & height analysis",
+                        })}
+                        aria-label="View full-size front-view pose and height analysis"
+                        aria-haspopup="dialog"
+                      >
+                        <img src={`data:image/jpeg;base64,${result.annotated_image_base64}`} alt="Front Analysis" />
+                      </button>
                     </div>
                     {result.annotated_image_base64_side && (
                       <div>
-                        <img src={`data:image/jpeg;base64,${result.annotated_image_base64_side}`} alt="Side Analysis" style={{ borderRadius: '12px' }} />
+                        <button
+                          type="button"
+                          className="result-image-open"
+                          onClick={() => setSelectedDatasetImage({
+                            url: `data:image/jpeg;base64,${result.annotated_image_base64_side}`,
+                            alt: "Side-view pose and height analysis with detected joints",
+                            title: "Side view · Pose & height analysis",
+                          })}
+                          aria-label="View full-size side-view pose and height analysis"
+                          aria-haspopup="dialog"
+                        >
+                          <img src={`data:image/jpeg;base64,${result.annotated_image_base64_side}`} alt="Side Analysis" />
+                        </button>
                       </div>
                     )}
                   </div>
@@ -856,6 +911,37 @@ export default function App() {
           </div>
         )}
       </section>
+      )}
+
+      {selectedDatasetImage && (
+        <div
+          className="image-lightbox"
+          role="presentation"
+          onClick={() => setSelectedDatasetImage(null)}
+        >
+          <div
+            className="image-lightbox-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Full-size image: ${selectedDatasetImage.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="image-lightbox-header">
+              <span>{selectedDatasetImage.title}</span>
+              <button
+                type="button"
+                className="image-lightbox-close"
+                onClick={() => setSelectedDatasetImage(null)}
+                aria-label="Close full-size image"
+                autoFocus
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <img className="image-lightbox-image" src={selectedDatasetImage.url} alt={selectedDatasetImage.alt} />
+            <p className="image-lightbox-hint">Press Esc or click outside the image to close</p>
+          </div>
+        </div>
       )}
 
       {/* Feedback Modal for Predict Tab */}

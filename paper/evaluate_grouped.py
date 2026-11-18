@@ -5,7 +5,8 @@ Run from the backend directory with:
 
 The script writes per-image out-of-fold predictions and evaluation metadata to
 paper/evaluation_results. Every fold groups by participant ID so images of one
-participant cannot appear in both training and test partitions.
+participant cannot appear in both training and test partitions. Use
+--exclude-missing-images to record and omit CSV rows whose image files are absent.
 """
 
 import argparse
@@ -52,7 +53,11 @@ def _normalize_group(value: str) -> str:
     return value.strip().casefold()
 
 
-def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], str]:
+def _load_rows(
+    csv_path: Path,
+    image_dir: Path,
+    exclude_missing_images: bool = False,
+) -> tuple[list[dict[str, str]], str, int]:
     with csv_path.open(encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
         if reader.fieldnames is None:
@@ -75,6 +80,7 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
     resolved_image_dir = image_dir.resolve()
     rows = []
     seen_images: set[Path] = set()
+    missing_image_count = 0
     for row_number, source_row in enumerate(source_rows, start=2):
         if None in source_row:
             raise ValueError(f"Malformed CSV row {row_number}: too many fields")
@@ -102,6 +108,9 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
         if image_path in seen_images:
             raise ValueError(f"Duplicate image reference on CSV row {row_number}.")
         if not image_path.is_file():
+            if exclude_missing_images:
+                missing_image_count += 1
+                continue
             raise FileNotFoundError(
                 f"Image listed on CSV row {row_number} does not exist: {image_name}"
             )
@@ -138,7 +147,7 @@ def _load_rows(csv_path: Path, image_dir: Path) -> tuple[list[dict[str, str]], s
                 )
         rows.append(row)
 
-    return rows, "person_id"
+    return rows, "person_id", missing_image_count
 
 
 def _grouped_values(
@@ -217,6 +226,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--folds", type=int, default=MAX_CV_FOLDS)
+    parser.add_argument(
+        "--exclude-missing-images",
+        action="store_true",
+        help="Exclude and report CSV rows whose referenced image is unavailable.",
+    )
     args = parser.parse_args()
     if args.folds < 2:
         parser.error("--folds must be at least 2")
@@ -224,7 +238,11 @@ def main() -> None:
     csv_path = DEFAULT_CSV.resolve()
     image_dir = (DATASET / "images").resolve()
     output_dir = args.output_dir.resolve()
-    rows, grouping_column = _load_rows(csv_path, image_dir)
+    rows, grouping_column, missing_image_count = _load_rows(
+        csv_path,
+        image_dir,
+        exclude_missing_images=args.exclude_missing_images,
+    )
     groups = np.asarray([row["_group"] for row in rows])
     group_count = len(set(groups))
     if group_count < 4:
@@ -421,6 +439,8 @@ def main() -> None:
         f"weight labels: {int(weight_mask.sum())} across {weight_group_count} groups; "
         f"groups from {grouping_description}; outer folds: {outer_fold_count}"
     )
+    if missing_image_count:
+        print(f"Excluded CSV rows with missing images: {missing_image_count}")
 
     prediction_path = output_dir / "grouped_predictions.csv"
     metadata_path = output_dir / "evaluation_metadata.json"
@@ -462,6 +482,7 @@ def main() -> None:
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "dataset_csv": str(csv_path),
         "dataset_csv_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
+        "excluded_missing_image_count": missing_image_count,
         "image_count": len(rows),
         "group_count": group_count,
         "weight_label_count": int(weight_mask.sum()),
@@ -474,6 +495,11 @@ def main() -> None:
         "weight_model": {
             "type": "StandardScaler + Ridge",
             "alpha": 1.0,
+        },
+        "weight_height_feature": {
+            "evaluation": "out-of-fold calibrated height",
+            "saved_model_training": "out-of-fold calibrated height",
+            "inference": "calibrated height",
         },
         "feature_names": list(FEATURE_NAMES),
         "versions": {
