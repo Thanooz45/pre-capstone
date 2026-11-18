@@ -1,0 +1,790 @@
+PROJECT REPORT CODE EXTRACTS
+Human Height and Weight Estimation System
+========================================================================
+
+Selected excerpts from the project source code. Each excerpt is identified by its source path and line range.
+The implementation combines deep-learning-based person, pose, and segmentation models with camera geometry and Ridge regression; final height and weight estimates are not produced by an end-to-end deep neural network.
+NOTE: These are report-ready excerpts, not a replacement for the complete source files.
+
+========================================================================
+Runtime configuration
+========================================================================
+Camera geometry defaults, YOLO person class/confidence, and MediaPipe pose settings.
+
+SOURCE: backend/core/config.py (lines 27-42)
+    # ---- Camera defaults ----
+    DEFAULT_CAMERA_HEIGHT_CM: float = 100.0   # default camera height for new captures
+    DEFAULT_DISTANCE_CM: float = 150.0         # default subject distance for new captures
+
+    # ---- Camera geometry ----
+    VERTICAL_FOV_DEG: float = 55.0            # vertical field-of-view (typical webcam/phone)
+
+    # ---- YOLOv8 ----
+    YOLO_MODEL_PATH: str = "yolov8n.pt"       # swap to yolov8s.pt / yolov8m.pt for accuracy
+    YOLO_PERSON_CLASS_ID: int = 0             # COCO class 0 = person
+    YOLO_CONF_THRESHOLD: float = 0.4          # min detection confidence
+
+    # ---- MediaPipe ----
+    MP_MODEL_COMPLEXITY: int = 0              # 0=lite, 1=full, 2=heavy (Set to 0 for 512MB RAM limit)
+    MP_MIN_DETECTION_CONF: float = 0.5
+
+
+
+========================================================================
+Load YOLOv8 and MediaPipe models
+========================================================================
+The service initializes the YOLO detector, MediaPipe Pose Landmarker, and MediaPipe Selfie Segmenter.
+
+SOURCE: backend/services/height_estimator.py (lines 92-144)
+def load_models() -> None:
+    """
+    Pre-load YOLOv8 and MediaPipe Pose models.
+    Called once on application startup via FastAPI lifespan.
+    Safe to call multiple times (no-op if already loaded).
+    """
+    global _yolo_model, _pose, _segmenter
+
+    if _yolo_model is None:
+        logger.info("Loading YOLOv8 model: %s", settings.YOLO_MODEL_PATH)
+        _yolo_model = YOLO(settings.YOLO_MODEL_PATH)
+        logger.info("YOLOv8 loaded.")
+
+    if _pose is None:
+        pose_model_url = _POSE_MODEL_URLS.get(settings.MP_MODEL_COMPLEXITY)
+        if pose_model_url is None:
+            raise ValueError(
+                "MP_MODEL_COMPLEXITY must be 0 (lite), 1 (full), or 2 (heavy)"
+            )
+        pose_model_path = _ensure_model_asset(
+            f"pose_landmarker_{('lite', 'full', 'heavy')[settings.MP_MODEL_COMPLEXITY]}.task",
+            pose_model_url,
+        )
+        logger.info("Loading MediaPipe Pose Landmarker (complexity=%d)…", settings.MP_MODEL_COMPLEXITY)
+        _pose = vision.PoseLandmarker.create_from_options(
+            vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=str(pose_model_path)
+                ),
+                running_mode=vision.RunningMode.IMAGE,
+                num_poses=1,
+                min_pose_detection_confidence=settings.MP_MIN_DETECTION_CONF,
+            )
+        )
+        logger.info("MediaPipe Pose Landmarker loaded.")
+
+    if _segmenter is None:
+        # Segmentation supplies body-shape features for the weight regressor.
+        segmenter_model_path = _ensure_model_asset(
+            "selfie_segmenter.tflite",
+            _SEGMENTER_MODEL_URL,
+        )
+        _segmenter = vision.ImageSegmenter.create_from_options(
+            vision.ImageSegmenterOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=str(segmenter_model_path)
+                ),
+                running_mode=vision.RunningMode.IMAGE,
+                output_confidence_masks=True,
+            )
+        )
+        logger.info("MediaPipe Selfie Segmentation loaded.")
+
+
+
+========================================================================
+Detect the person with YOLOv8
+========================================================================
+The detector filters results to the person class and selects the largest valid bounding box.
+
+SOURCE: backend/services/height_estimator.py (lines 385-411)
+    # STEP 1 — YOLOv8: person detection
+    # =========================================================
+    yolo_results = _yolo_model(image_rgb, verbose=False)[0]
+    boxes = yolo_results.boxes
+
+    person_boxes: list[tuple[int, int, int, int, float]] = []
+    if boxes is not None:
+        for box in boxes:
+            cls_id = int(box.cls[0].item())
+            conf   = float(box.conf[0].item())
+            if cls_id == settings.YOLO_PERSON_CLASS_ID and conf >= settings.YOLO_CONF_THRESHOLD:
+                x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+                person_boxes.append((x1, y1, x2, y2, conf))
+
+    if not person_boxes:
+        raise ValueError(
+            "No person detected in the image. "
+            "Please use a clear, well-lit, full-body photo. "
+            f"(YOLO confidence threshold: {settings.YOLO_CONF_THRESHOLD:.0%})"
+        )
+
+    # Select the largest bounding box (dominant / closest person)
+    person_boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
+    x1, y1, x2, y2, det_conf = person_boxes[0]
+    logger.debug("Best person box: (%d,%d)→(%d,%d)  conf=%.2f", x1, y1, x2, y2, det_conf)
+
+    # =========================================================
+
+
+========================================================================
+Extract pose landmarks with MediaPipe
+========================================================================
+The detected person crop is passed to MediaPipe Pose; normalized landmark coordinates are converted to image coordinates.
+
+SOURCE: backend/services/height_estimator.py (lines 412-471)
+    # STEP 2 — MediaPipe Pose: keypoint extraction
+    # =========================================================
+    pad = 15  # px padding around the detected crop
+    cx1 = max(0,     x1 - pad)
+    cy1 = max(0,     y1 - pad)
+    cx2 = min(img_w, x2 + pad)
+    cy2 = min(img_h, y2 + pad)
+
+    crop_rgb  = image_rgb[cy1:cy2, cx1:cx2]
+    crop_h, crop_w = crop_rgb.shape[:2]
+
+    pose_image = mp.Image(
+        image_format=mp.ImageFormat.SRGB,
+        data=np.ascontiguousarray(crop_rgb),
+    )
+    pose_result = _pose.detect(pose_image)
+
+    if not pose_result.pose_landmarks:
+        raise ValueError(
+            "MediaPipe Pose could not detect any keypoints in the image. "
+            "Try a well-lit photo where the full body is visible."
+        )
+
+    lms = pose_result.pose_landmarks[0]
+
+    # MediaPipe landmark indices used:
+    #   0  = Nose
+    #   7  = Left ear,    8  = Right ear
+    #  11  = Left shoulder, 12 = Right shoulder
+    #  23  = Left hip,    24 = Right hip
+    #  25  = Left knee,   26 = Right knee
+    #  27  = Left ankle,  28 = Right ankle
+    #  29  = Left heel,   30 = Right heel
+    #  31  = Left toe,    32 = Right toe
+    def lm_abs(lm) -> tuple[int, int]:
+        """Convert normalised landmark → absolute image coordinates."""
+        return (
+            int(lm.x * crop_w) + cx1,
+            int(lm.y * crop_h) + cy1,
+        )
+
+    landmarks_dict = {
+        'nose': lm_abs(lms[0]),
+        'left_ear': lm_abs(lms[7]),
+        'right_ear': lm_abs(lms[8]),
+        'left_shoulder': lm_abs(lms[11]),
+        'right_shoulder': lm_abs(lms[12]),
+        'left_hip': lm_abs(lms[23]),
+        'right_hip': lm_abs(lms[24]),
+        'left_knee': lm_abs(lms[25]),
+        'right_knee': lm_abs(lms[26]),
+        'left_ankle': lm_abs(lms[27]),
+        'right_ankle': lm_abs(lms[28]),
+        'left_heel': lm_abs(lms[29]),
+        'right_heel': lm_abs(lms[30]),
+        'left_toe': lm_abs(lms[31]),
+        'right_toe': lm_abs(lms[32]),
+    }
+
+    # =========================================================
+
+
+========================================================================
+Establish head/foot boundaries and check posture
+========================================================================
+The image top and lowest visible heel/toe define pixel height; knee angles produce the posture warning.
+
+SOURCE: backend/services/height_estimator.py (lines 472-515)
+    # STEP 3 — Pixel boundary logic
+    # =========================================================
+    # Use the detected subject's top edge instead of extrapolating the crown
+    # from ear and shoulder landmarks, which can place it above the person.
+    y_top = y1
+    mid_x = int((landmarks_dict['left_shoulder'][0] + landmarks_dict['right_shoulder'][0]) / 2.0)
+    head_top = (mid_x, y_top)
+
+    # Ground Contact (Bottom Point):
+    y_bottom = max(
+        landmarks_dict['left_heel'][1],
+        landmarks_dict['right_heel'][1],
+        landmarks_dict['left_toe'][1],
+        landmarks_dict['right_toe'][1]
+    )
+    # Find x for bottom by picking the lowest point's x
+    bottom_points = [
+        landmarks_dict['left_heel'], landmarks_dict['right_heel'], 
+        landmarks_dict['left_toe'], landmarks_dict['right_toe']
+    ]
+    bottom_pt = max(bottom_points, key=lambda p: p[1])
+    heel = (bottom_pt[0], int(y_bottom))
+    
+    pixel_height = abs(y_bottom - y_top)
+    if pixel_height < 10:
+        raise ValueError(
+            "Detected person is too small in the frame. "
+            "Please use a photo where the full body is clearly visible."
+        )
+
+    # Posture warning (knee angles)
+    def angle(p1, p2, p3):
+        # angle at p2
+        v1 = np.array(p1) - np.array(p2)
+        v2 = np.array(p3) - np.array(p2)
+        cosine_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
+        return np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
+    
+    left_knee_angle = angle(landmarks_dict['left_hip'], landmarks_dict['left_knee'], landmarks_dict['left_ankle'])
+    right_knee_angle = angle(landmarks_dict['right_hip'], landmarks_dict['right_knee'], landmarks_dict['right_ankle'])
+    posture_warning = left_knee_angle < 160 or right_knee_angle < 160
+
+    logger.debug("Pixel height: %d px  (head_top_y=%d, heel_y=%d)", pixel_height, y_top, y_bottom)
+
+
+
+========================================================================
+Convert pixel height to centimeters
+========================================================================
+Pinhole-camera geometry uses vertical field of view, camera height, camera-to-subject distance, and image-space angles.
+
+SOURCE: backend/services/height_estimator.py (lines 203-244)
+def _pixel_to_real_height(
+    y_top: float,
+    y_bottom: float,
+    image_height_px: int,
+    distance_cm: float,
+    camera_height_cm: float,
+) -> float:
+    """
+    Convert vertical pixel points to real-world height using the pinhole camera model,
+    taking into account the camera's height and pitch angle.
+    """
+    vfov_rad = math.radians(settings.VERTICAL_FOV_DEG)
+    f_y = (image_height_px / 2.0) / math.tan(vfov_rad / 2.0)
+
+    # Calculate angles relative to the camera's optical axis
+    # Positive alpha means the point is above the center of the image
+    dy_top = (image_height_px / 2.0) - y_top
+    dy_bottom = (image_height_px / 2.0) - y_bottom
+
+    alpha_top = math.atan(dy_top / f_y)
+    alpha_bottom = math.atan(dy_bottom / f_y)
+
+    # Determine camera pitch (theta) based on the feet being on the ground
+    # Angle of the ray to the feet below horizontal
+    ray_bottom_below_horiz = math.atan(camera_height_cm / distance_cm)
+    
+    # phi_bottom is the absolute angle of the bottom ray (negative means below horizontal)
+    phi_bottom = -ray_bottom_below_horiz
+    
+    # Camera pitch (theta) = phi_bottom - alpha_bottom
+    theta = phi_bottom - alpha_bottom
+    
+    # Absolute angle of the top ray
+    phi_top = theta + alpha_top
+    
+    # Height of the top point relative to the camera
+    h_top_relative = distance_cm * math.tan(phi_top)
+    
+    # Total height is camera height + relative top height
+    total_height = camera_height_cm + h_top_relative
+    
+    return max(0.0, total_height)
+
+
+========================================================================
+Extract anthropometric weight features
+========================================================================
+Eight features combine height (the API replaces it with calibrated height before weight inference) with normalized shoulder, hip, silhouette, chest, waist, and lower-body proportions.
+
+SOURCE: backend/services/height_estimator.py (lines 152-197)
+def _weight_features(
+    image_rgb: np.ndarray,
+    box: tuple[int, int, int, int],
+    landmarks: dict,
+    pixel_height: int,
+    estimated_height_cm: float,
+) -> dict:
+    """Create scale-independent body-shape features for weight regression.
+
+    A single image cannot directly observe body depth or composition.  These
+    features therefore describe visible proportions only and must be used as
+    an approximate, dataset-specific prediction.
+    """
+    x1, y1, x2, y2 = box
+    box_w, box_h = max(1, x2 - x1), max(1, y2 - y1)
+
+    def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
+        return float(math.dist(a, b))
+
+    shoulder_width = distance(landmarks["left_shoulder"], landmarks["right_shoulder"])
+    hip_width = distance(landmarks["left_hip"], landmarks["right_hip"])
+
+    segmentation_result = _segmenter.segment(
+        mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+    )
+    if not segmentation_result.confidence_masks:
+        raise RuntimeError("MediaPipe Selfie Segmentation did not return a person mask")
+    segmentation = segmentation_result.confidence_masks[0].numpy_view()[:, :, 0]
+    person_mask = segmentation[y1:y2, x1:x2] > 0.5
+    fill_ratio = float(person_mask.mean()) if person_mask.size else 0.0
+
+    # The widths at the chest/waist/hip levels capture silhouette shape.
+    def row_width(relative_y: float) -> float:
+        row = min(person_mask.shape[0] - 1, max(0, int(person_mask.shape[0] * relative_y)))
+        return float(person_mask[row].sum()) / max(1, pixel_height)
+
+    return {
+        "estimated_height_cm": round(float(estimated_height_cm), 4),
+        "shoulder_width_ratio": round(shoulder_width / pixel_height, 6),
+        "hip_width_ratio": round(hip_width / pixel_height, 6),
+        "silhouette_fill_ratio": round(fill_ratio, 6),
+        "silhouette_aspect_ratio": round(box_w / box_h, 6),
+        "chest_width_ratio": round(row_width(0.30), 6),
+        "waist_width_ratio": round(row_width(0.52), 6),
+        "lower_body_width_ratio": round(row_width(0.70), 6),
+    }
+
+
+========================================================================
+Draw the annotated result image
+========================================================================
+OpenCV draws the person box, skeletal connections/joints, head and ground markers, height guide, and measurement label.
+
+SOURCE: backend/services/height_estimator.py (lines 260-330)
+def _draw_overlays(
+    overlay: np.ndarray,
+    x1: int, y1: int, x2: int, y2: int,
+    det_conf: float,
+    landmarks: dict,
+    head_top: tuple[int, int],
+    heel: tuple[int, int],
+    estimated_cm: float,
+    feet: int,
+    inches: float,
+) -> None:
+    """
+    Draws all visual overlays directly onto `overlay` (in-place).
+    """
+    # --- Green bounding box ---
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 210, 0), 3)
+    cv2.putText(
+        overlay,
+        f"Person  {det_conf:.0%}",
+        (x1, max(y1 - 12, 20)),
+        cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 210, 0), 2, cv2.LINE_AA,
+    )
+
+    # --- Full skeleton pose wireframe ---
+    skeleton_connections = [
+        ('left_shoulder', 'right_shoulder'),
+        ('left_shoulder', 'left_hip'),
+        ('right_shoulder', 'right_hip'),
+        ('left_hip', 'right_hip'),
+        ('left_hip', 'left_knee'),
+        ('right_hip', 'right_knee'),
+        ('left_knee', 'left_ankle'),
+        ('right_knee', 'right_ankle'),
+        ('left_ankle', 'left_heel'),
+        ('right_ankle', 'right_heel'),
+        ('left_ankle', 'left_toe'),
+        ('right_ankle', 'right_toe'),
+    ]
+    for p1_name, p2_name in skeleton_connections:
+        if p1_name in landmarks and p2_name in landmarks:
+            p1 = landmarks[p1_name]
+            p2 = landmarks[p2_name]
+            cv2.line(overlay, p1, p2, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.circle(overlay, p1, 4, (0, 165, 255), -1, cv2.LINE_AA)
+            cv2.circle(overlay, p2, 4, (0, 165, 255), -1, cv2.LINE_AA)
+
+    # --- Highlight Y_top and Y_bottom ---
+    mid_x = (head_top[0] + heel[0]) // 2
+    # Red dot with horizontal marker line for Y_top
+    cv2.circle(overlay, head_top, 6, (0, 0, 255), -1, cv2.LINE_AA)
+    cv2.line(overlay, (mid_x - 30, head_top[1]), (mid_x + 30, head_top[1]), (0, 0, 255), 2, cv2.LINE_AA)
+    
+    # Green dot with horizontal marker line for Y_bottom
+    cv2.circle(overlay, heel, 6, (0, 255, 0), -1, cv2.LINE_AA)
+    cv2.line(overlay, (mid_x - 30, heel[1]), (mid_x + 30, heel[1]), (0, 255, 0), 2, cv2.LINE_AA)
+
+    # --- Blue bounding vertical line ---
+    cv2.line(overlay, (mid_x, head_top[1]), (mid_x, heel[1]), (255, 100, 0), 2, cv2.LINE_AA)
+
+    # --- Height label (shadow + text) ---
+    label = f"{estimated_cm:.1f} cm  ({feet}' {inches}\")"
+    text_x = mid_x + 14
+    text_y = head_top[1] + (heel[1] - head_top[1]) // 2
+
+    # Drop shadow
+    cv2.putText(overlay, label, (text_x + 2, text_y + 2),
+                cv2.FONT_HERSHEY_DUPLEX, 0.85, (0, 0, 0), 3, cv2.LINE_AA)
+    # Foreground
+    cv2.putText(overlay, label, (text_x, text_y),
+                cv2.FONT_HERSHEY_DUPLEX, 0.85, (255, 120, 30), 2, cv2.LINE_AA)
+
+
+
+========================================================================
+Apply height calibration and assemble height result
+========================================================================
+The geometric height and feature vector are calibrated, the overlays are rendered, and the annotated JPEG is encoded as base64.
+
+SOURCE: backend/services/height_estimator.py (lines 517-580)
+    # STEP 4 — Geometric height calculation
+    # =========================================================
+    geometric_cm = _pixel_to_real_height(
+        float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm
+    )
+    weight_features = _weight_features(
+        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, geometric_cm
+    )
+    estimated_cm = (
+        float(height_calibrator(weight_features))
+        if height_calibrator is not None
+        else geometric_cm
+    )
+    feet, inches = _cm_to_feet_inches(estimated_cm)
+
+    # Confidence: weighted blend of YOLOv8 box confidence + nose visibility
+    pose_visibility = float(lms[0].visibility)
+    confidence = round(det_conf * 0.6 + pose_visibility * 0.4, 3)
+
+    logger.info(
+        "Result: %.1f cm (%d'%.1f\")  confidence=%.2f",
+        estimated_cm, feet, inches, confidence,
+    )
+
+    # =========================================================
+    # STEP 5 — Draw overlays
+    # =========================================================
+    _draw_overlays(
+        overlay=overlay,
+        x1=x1, y1=y1, x2=x2, y2=y2,
+        det_conf=det_conf,
+        landmarks=landmarks_dict,
+        head_top=head_top,
+        heel=heel,
+        estimated_cm=estimated_cm,
+        feet=feet,
+        inches=inches,
+    )
+
+    # =========================================================
+    # STEP 6 — Encode annotated image → base64 JPEG
+    # =========================================================
+    encode_params = [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY]
+    success, buffer = cv2.imencode(".jpg", overlay, encode_params)
+    if not success:
+        raise RuntimeError("Failed to encode annotated image to JPEG.")
+
+    annotated_b64 = base64.b64encode(buffer).decode("utf-8")
+
+    return {
+        "estimated_height_cm": round(estimated_cm, 1),
+        "estimated_height_ft": f"{feet}' {inches}\"",
+        "geometric_height_cm": round(geometric_cm, 1),
+        "confidence_score":    confidence,
+        "pixel_height":        pixel_height,
+        "bounding_box":        {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+        "camera_height_cm":    camera_height_cm,
+        "distance_cm":         distance_cm,
+        "posture_warning":     bool(posture_warning),
+        "annotated_image_base64": annotated_b64,
+        # Private implementation data used by the local training/inference
+        # service. API routes remove it before returning a response.
+        "_weight_features": weight_features,
+    }
+
+
+========================================================================
+Load and run the weight/height models
+========================================================================
+The model service defines feature order, loads saved joblib models, estimates weight and its range, and calibrates height.
+
+SOURCE: backend/services/weight_estimator.py (lines 1-103)
+"""Local weight-regression model loading and inference."""
+
+import logging
+from pathlib import Path
+
+import joblib
+import numpy as np
+
+from core.config import settings
+
+logger = logging.getLogger(__name__)
+
+FEATURE_NAMES = (
+    "estimated_height_cm",
+    "shoulder_width_ratio",
+    "hip_width_ratio",
+    "silhouette_fill_ratio",
+    "silhouette_aspect_ratio",
+    "chest_width_ratio",
+    "waist_width_ratio",
+    "lower_body_width_ratio",
+)
+
+_weight_model = None
+_height_model = None
+
+
+def _model_path() -> Path:
+    return Path(__file__).resolve().parents[1] / settings.WEIGHT_MODEL_PATH
+
+
+def _height_model_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "models" / "height_calibrator.joblib"
+
+
+def load_weight_model() -> bool:
+    """Load the trained model if it exists. Returns False until training runs."""
+    global _weight_model
+    if _weight_model is not None:
+        return True
+    path = _model_path()
+    if not path.exists():
+        logger.warning("Weight model not found at %s", path)
+        return False
+    _weight_model = joblib.load(path)
+    logger.info("Weight regression model loaded from %s", path)
+    return True
+
+
+def reload_trained_models() -> None:
+    """Reload both dataset-trained models after a successful retraining run."""
+    global _weight_model, _height_model
+    weight_path = _model_path()
+    height_path = _height_model_path()
+    if not weight_path.is_file() or not height_path.is_file():
+        raise FileNotFoundError("Training did not produce both required model files.")
+    weight_model = joblib.load(weight_path)
+    height_model = joblib.load(height_path)
+    _weight_model = weight_model
+    _height_model = height_model
+    logger.info("Reloaded trained height and weight models.")
+
+
+def estimate_weight(features: dict) -> dict:
+    """Predict kg from the height and visible body-proportion features."""
+    if not load_weight_model():
+        raise RuntimeError(
+            "The weight model has not been trained. Run scripts/train_weight_model.py first."
+        )
+    values = np.array([[features[name] for name in FEATURE_NAMES]], dtype=float)
+    prediction = float(_weight_model.predict(values)[0])
+
+    # Use tree spread when available; non-tree models fall back to a fixed range.
+    trees = getattr(_weight_model, "estimators_", [])
+    if trees:
+        tree_predictions = np.array([tree.predict(values)[0] for tree in trees], dtype=float)
+        spread = max(4.0, float(np.std(tree_predictions)) * 1.5)
+    else:
+        spread = 8.0
+
+    return {
+        "estimated_weight_kg": round(prediction, 1),
+        "estimated_weight_lb": round(prediction * 2.20462, 1),
+        "weight_estimate_range_kg": [round(max(0.0, prediction - spread), 1), round(prediction + spread, 1)],
+        "weight_model_available": True,
+    }
+
+
+def calibrate_height(features: dict) -> float:
+    """Correct the geometric estimate using the labelled camera dataset.
+
+    Geometry remains the primary signal.  This learned calibration compensates
+    for the actual phone lens/pitch and landmark bias in the training setup.
+    """
+    global _height_model
+    path = _height_model_path()
+    if _height_model is None and path.exists():
+        _height_model = joblib.load(path)
+        logger.info("Height calibration model loaded from %s", path)
+    if _height_model is None:
+        return float(features["estimated_height_cm"])
+    values = np.array([[features[name] for name in FEATURE_NAMES]], dtype=float)
+    return float(_height_model.predict(values)[0])
+
+
+========================================================================
+Train the height calibration model
+========================================================================
+Height calibration uses StandardScaler + Ridge with participant-grouped cross-validation for alpha selection.
+
+SOURCE: backend/scripts/train_weight_model.py (lines 40-50)
+def _new_height_model(group_count: int) -> GridSearchCV:
+    if group_count < 2:
+        raise ValueError("Grouped height-model tuning requires two person groups.")
+    return GridSearchCV(
+        estimator=make_pipeline(StandardScaler(), Ridge()),
+        param_grid={"ridge__alpha": [0.1, 1.0, 10.0, 100.0]},
+        scoring="neg_mean_absolute_error",
+        cv=GroupKFold(n_splits=min(5, group_count)),
+        refit=True,
+        n_jobs=1,
+    )
+
+
+========================================================================
+Define the weight regressor
+========================================================================
+The weight estimator is a StandardScaler + Ridge pipeline with alpha=1.0.
+
+SOURCE: backend/scripts/train_weight_model.py (lines 84-85)
+def _new_weight_model():
+    return make_pipeline(StandardScaler(), Ridge(alpha=1.0))
+
+
+========================================================================
+Fit and save trained models
+========================================================================
+The weight model uses out-of-fold calibrated heights; both trained models are saved as joblib artifacts.
+
+SOURCE: backend/scripts/train_weight_model.py (lines 299-332)
+    evaluation = _evaluate_by_person(
+        features,
+        heights,
+        weights,
+        groups,
+    )
+
+    feature_array = np.asarray(features, dtype=float)
+    height_array = np.asarray(heights, dtype=float)
+    weight_array = np.asarray(weights, dtype=float)
+    group_array = np.asarray(groups)
+    weight_mask = np.isfinite(weight_array)
+    weight_group_count = len(set(group_array[weight_mask]))
+    if weight_group_count < 5:
+        raise RuntimeError(
+            "At least 5 participant groups with measured weights are required "
+            "to train the weight model."
+        )
+    out_of_fold_heights = _grouped_height_oof(
+        feature_array, height_array, group_array
+    )
+
+    height_model = _fit_height_model(feature_array, height_array, group_array)
+
+    height_index = FEATURE_NAMES.index("estimated_height_cm")
+    weight_features = feature_array[weight_mask].copy()
+    weight_features[:, height_index] = out_of_fold_heights[weight_mask]
+    weight_model = _new_weight_model()
+    weight_model.fit(weight_features, weight_array[weight_mask])
+
+    model_directory = args.model_output_dir.resolve()
+    model_directory.mkdir(parents=True, exist_ok=True)
+    dump(height_model, model_directory / "height_calibrator.joblib")
+    dump(weight_model, model_directory / "weight_regressor.joblib")
+
+
+========================================================================
+FastAPI prediction endpoint inputs
+========================================================================
+The endpoint accepts the front image, optional side image, camera height, and subject distance.
+
+SOURCE: backend/api/routes.py (lines 78-93)
+async def predict_body(
+    file: UploadFile = File(..., description="Full-body image of the person (JPG / PNG / WEBP)."),
+    file_side: UploadFile = File(None, description="Optional side-view image for better weight estimation."),
+    camera_height_cm: float = Form(
+        default=settings.DEFAULT_CAMERA_HEIGHT_CM,
+        ge=30.0,
+        le=500.0,
+        description="Height of the camera above the ground in centimetres.",
+    ),
+    distance_cm: float = Form(
+        default=settings.DEFAULT_DISTANCE_CM,
+        ge=30.0,
+        le=2000.0,
+        description="Horizontal distance from the camera to the person in centimetres.",
+    ),
+):
+
+
+========================================================================
+Process images and combine front/side weight estimates
+========================================================================
+The route runs height/feature extraction, estimates front-view weight, optionally averages front/side predictions, and returns JSON.
+
+SOURCE: backend/api/routes.py (lines 132-181)
+        result = estimate_height(
+            image_path=tmp_path,
+            camera_height_cm=camera_height_cm,
+            distance_cm=distance_cm,
+            height_calibrator=calibrate_height,
+        )
+        features = result.pop("_weight_features")
+        geometric_height = result["geometric_height_cm"]
+        calibrated_height = result["estimated_height_cm"]
+        
+        # Base result
+        features["estimated_height_cm"] = calibrated_height
+        result["geometric_height_cm"] = geometric_height
+        
+        # Estimate weight (Front)
+        front_weight_est = estimate_weight(features)
+        
+        # If side image provided, average the weight estimates
+        if tmp_path_side:
+            side_result = estimate_height(
+                image_path=tmp_path_side,
+                camera_height_cm=camera_height_cm,
+                distance_cm=distance_cm,
+                height_calibrator=calibrate_height,
+            )
+            side_features = side_result.pop("_weight_features")
+            side_features["estimated_height_cm"] = side_result["estimated_height_cm"]
+            side_weight_est = estimate_weight(side_features)
+            
+            # Average the predictions
+            front_kg = front_weight_est["estimated_weight_kg"]
+            side_kg = side_weight_est["estimated_weight_kg"]
+            avg_kg = (front_kg + side_kg) / 2
+            
+            front_range = front_weight_est["weight_estimate_range_kg"]
+            side_range = side_weight_est["weight_estimate_range_kg"]
+            
+            result["estimated_weight_kg"] = round(avg_kg, 1)
+            result["estimated_weight_lb"] = round(avg_kg * 2.20462, 1)
+            result["weight_estimate_range_kg"] = [
+                round((front_range[0] + side_range[0]) / 2, 1),
+                round((front_range[1] + side_range[1]) / 2, 1)
+            ]
+            result["weight_model_available"] = front_weight_est["weight_model_available"]
+            result["annotated_image_base64_side"] = side_result["annotated_image_base64"]
+        else:
+            result.update(front_weight_est)
+            result["annotated_image_base64_side"] = None
+
+        return JSONResponse(content=result)
+
+
+========================================================================
+React frontend request
+========================================================================
+The frontend submits the image files and camera parameters to the prediction endpoint.
+
+SOURCE: frontend/src/services/api.js (lines 7-22)
+export async function predictBody(
+  file,
+  fileSide,
+  cameraHeight,
+  distance
+) {
+  const body = new FormData();
+  body.append("file", file);
+  if (fileSide) {
+    body.append("file_side", fileSide);
+  }
+  body.append("camera_height_cm", String(cameraHeight));
+  body.append("distance_cm", String(distance));
+  const { data } = await api.post("/predict-body", body);
+  return data;
+}
+
