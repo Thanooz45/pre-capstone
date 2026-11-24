@@ -8,7 +8,8 @@ export async function predictBody(
   file,
   fileSide,
   cameraHeight,
-  distance
+  distance,
+  { apiVersion = "1", predictionMode = "height", selfReportedHeightCm = "", ageBand = "" } = {},
 ) {
   const body = new FormData();
   body.append("file", file);
@@ -17,6 +18,10 @@ export async function predictBody(
   }
   body.append("camera_height_cm", String(cameraHeight));
   body.append("distance_cm", String(distance));
+  body.append("api_version", apiVersion);
+  body.append("prediction_mode", predictionMode);
+  if (selfReportedHeightCm !== "") body.append("self_reported_height_cm", String(selfReportedHeightCm));
+  if (ageBand) body.append("age_band", ageBand);
   const { data } = await api.post("/predict-body", body);
   return data;
 }

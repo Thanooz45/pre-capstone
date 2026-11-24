@@ -105,6 +105,16 @@ def _group_median(targets, groups):
     return float(np.median(group_targets))
 
 
+def _assert_group_disjoint(train_groups, test_groups, *, context="evaluation"):
+    """Fail loudly if participant records cross an evaluation boundary."""
+    overlap = set(train_groups) & set(test_groups)
+    if overlap:
+        raise ValueError(
+            f"Participant leakage in {context}: {len(overlap)} group(s) occur "
+            "in both train and test partitions."
+        )
+
+
 def _evaluate_by_person(features, heights, weights, groups):
     """Evaluate with nested splits and equal weight for each held-out person."""
     person_count = len(set(groups))
@@ -135,6 +145,9 @@ def _evaluate_by_person(features, heights, weights, groups):
 
     for train_indices, test_indices in outer_folds.split(features, heights, groups):
         train_groups = groups[train_indices]
+        _assert_group_disjoint(
+            train_groups, groups[test_indices], context="outer grouped fold"
+        )
         inner_height_predictions = _grouped_height_oof(
             features[train_indices],
             heights[train_indices],
@@ -287,7 +300,10 @@ def main() -> None:
         heights.append(float(row["height_cm"]))
         weight_text = row["weight_kg"].strip()
         weights.append(float(weight_text) if weight_text else np.nan)
-        groups.append(row["person_id"])
+        participant_id = row["person_id"].strip().casefold()
+        if not participant_id:
+            raise ValueError(f"Missing participant ID for image {row['image_path']}")
+        groups.append(participant_id)
         print(f"Processed {row['image_path']}")
 
     if len(set(groups)) < 5:

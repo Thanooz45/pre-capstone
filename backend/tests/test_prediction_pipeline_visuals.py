@@ -5,10 +5,20 @@ import numpy as np
 from services.height_estimator import (
     _clean_segmentation_mask,
     _draw_pose_overlay,
+    _prominent_person_boxes,
 )
 
 
 class PredictionPipelineVisualTests(unittest.TestCase):
+    def test_person_filter_ignores_tiny_background_figures_only(self):
+        boxes = [
+            (100, 50, 500, 950, 0.91),
+            (720, 600, 755, 650, 0.72),
+            (0, 0, 130, 300, 0.68),
+        ]
+        filtered = _prominent_person_boxes(boxes)
+        self.assertEqual(filtered, [boxes[0], boxes[2]])
+
     def test_segmentation_preview_discards_background_outside_person(self):
         segmentation = np.zeros((100, 100), dtype=np.float32)
         segmentation[25:80, 40:60] = 0.99

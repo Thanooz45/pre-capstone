@@ -1,0 +1,180 @@
+{
+  "created_at_utc": "2026-11-24T13:46:10.603294+00:00",
+  "dataset_csv": "model_specification/height_weight_dataset.csv",
+  "dataset_csv_sha256": "ad49bc63e7dc87946cb698af6fdb5047760b43031bf54b220b4be032453fd111",
+  "excluded_missing_image_count": 1,
+  "image_count": 153,
+  "group_count": 38,
+  "weight_label_count": 153,
+  "weight_group_count": 38,
+  "vision_candidate": {
+    "detector_model": "yolov8n.pt",
+    "ultralytics_version": "8.4.185",
+    "pose_complexity": 2,
+    "segmentation_model": "MediaPipe Selfie Segmentation (unchanged)",
+    "extraction_images": 153,
+    "extraction_failures": 0,
+    "failure_rate": 0.0,
+    "mean_extraction_seconds": 5.126901681111062,
+    "median_extraction_seconds": 4.017307541999799,
+    "total_extraction_seconds": 784.4159572099925
+  },
+  "grouping_column": "person_id",
+  "grouping_rule": "normalized participant_id values",
+  "feature_version": "visual-proportions-v1",
+  "random_seed": null,
+  "split_method": "GroupKFold (deterministic; participant_id groups)",
+  "split_assignments": {
+    "person_001": 3,
+    "person_002": 5,
+    "person_003": 3,
+    "person_004": 2,
+    "person_005": 4,
+    "person_006": 1,
+    "person_007": 5,
+    "person_008": 3,
+    "person_009": 4,
+    "person_010": 2,
+    "person_011": 3,
+    "person_012": 2,
+    "person_013": 1,
+    "person_014": 2,
+    "person_015": 1,
+    "person_016": 5,
+    "person_017": 4,
+    "person_018": 5,
+    "person_019": 4,
+    "person_020": 3,
+    "person_021": 2,
+    "person_022": 1,
+    "person_025": 1,
+    "person_026": 2,
+    "person_027": 1,
+    "person_028": 3,
+    "person_030": 2,
+    "person_031": 1,
+    "person_032": 5,
+    "person_033": 4,
+    "person_034": 3,
+    "person_035": 2,
+    "person_036": 1,
+    "person_037": 5,
+    "person_038": 4,
+    "person_039": 5,
+    "person_040": 4,
+    "person_041": 3
+  },
+  "outer_folds": 5,
+  "inner_folds_max": 5,
+  "ridge_alpha_candidates": [
+    0.1,
+    1.0,
+    10.0,
+    100.0
+  ],
+  "weight_model": {
+    "type": "StandardScaler + Ridge",
+    "alpha": 1.0
+  },
+  "candidate_weight_models": {
+    "ridge_tuned": {
+      "type": "StandardScaler + Ridge",
+      "alpha_candidates": [
+        0.1,
+        1.0,
+        10.0,
+        100.0
+      ],
+      "tuning": "GroupKFold inside each outer training partition"
+    },
+    "elasticnet_tuned": {
+      "type": "StandardScaler + ElasticNet",
+      "alpha_candidates": [
+        0.01,
+        0.1,
+        1.0
+      ],
+      "l1_ratio_candidates": [
+        0.1,
+        0.5,
+        0.9
+      ],
+      "tuning": "GroupKFold inside each outer training partition",
+      "random_seed": 0
+    }
+  },
+  "weight_height_feature": {
+    "evaluation": "out-of-fold calibrated height",
+    "saved_model_training": "out-of-fold calibrated height",
+    "inference": "calibrated height"
+  },
+  "feature_names": [
+    "estimated_height_cm",
+    "shoulder_width_ratio",
+    "hip_width_ratio",
+    "silhouette_fill_ratio",
+    "silhouette_aspect_ratio",
+    "chest_width_ratio",
+    "waist_width_ratio",
+    "lower_body_width_ratio"
+  ],
+  "versions": {
+    "python": "3.13.16",
+    "numpy": "2.5.4",
+    "scikit_learn": "1.9.1",
+    "opencv_python": "5.0.0.93",
+    "mediapipe": "1.1.1"
+  },
+  "metrics_group_aggregated": {
+    "raw_geometric_height_cm": {
+      "n_groups": 38,
+      "mae": 35.400974561403515,
+      "rmse": 35.81906813363204,
+      "r2": -20.597331359136035,
+      "bias": -35.400974561403515
+    },
+    "calibrated_height_cm": {
+      "n_groups": 38,
+      "mae": 4.015040176266928,
+      "rmse": 4.98953575495672,
+      "r2": 0.5809249518209527,
+      "bias": 0.4491550823416766
+    },
+    "training_fold_median_height_cm": {
+      "n_groups": 38,
+      "mae": 6.879736842105262,
+      "rmse": 8.398871008089499,
+      "r2": -0.18744457579421825,
+      "bias": 1.4765789473684208
+    },
+    "weight_kg": {
+      "n_groups": 38,
+      "mae": 7.738075987210845,
+      "rmse": 9.270763267684213,
+      "r2": 0.5193156087617921,
+      "bias": 0.12191790599760939
+    },
+    "training_fold_median_weight_kg": {
+      "n_groups": 38,
+      "mae": 11.355263157894736,
+      "rmse": 13.42841645247319,
+      "r2": -0.008506357255385177,
+      "bias": 0.35526315789473684
+    },
+    "ridge_tuned_weight_kg": {
+      "n_groups": 38,
+      "mae": 8.116363149663128,
+      "rmse": 9.693805814672526,
+      "r2": 0.4744456092838728,
+      "bias": 0.24400718044380929
+    },
+    "elasticnet_tuned_weight_kg": {
+      "n_groups": 38,
+      "mae": 8.00378071935679,
+      "rmse": 9.570252476919658,
+      "r2": 0.4877572412889034,
+      "bias": 0.1621686772155164
+    }
+  },
+  "predictions_csv": "grouped_predictions.csv"
+}

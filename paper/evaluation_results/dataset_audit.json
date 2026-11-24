@@ -1,0 +1,1022 @@
+{
+  "schema_version": "capture-manifest-v1",
+  "source_csv_sha256": "ad49bc63e7dc87946cb698af6fdb5047760b43031bf54b220b4be032453fd111",
+  "row_count": 154,
+  "participant_count": 38,
+  "view_counts": {
+    "front": 67,
+    "side": 69,
+    "unknown": 18
+  },
+  "valid_pair_count": 67,
+  "paired_participant_count": 35,
+  "unpaired_capture_count": 2,
+  "duplicate_pair_keys": [],
+  "issues": [
+    {
+      "row": 86,
+      "participant_id": "person_019",
+      "reason": "missing_image",
+      "image": "eff953b6-df28-4141-98a4-b2b32f5e656c.jpeg"
+    },
+    {
+      "row": 86,
+      "participant_id": "person_019",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 87,
+      "participant_id": "person_001",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 88,
+      "participant_id": "person_006",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 89,
+      "participant_id": "person_022",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 90,
+      "participant_id": "person_004",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 91,
+      "participant_id": "person_017",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 92,
+      "participant_id": "person_025",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 93,
+      "participant_id": "person_020",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 94,
+      "participant_id": "person_007",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 95,
+      "participant_id": "person_013",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 96,
+      "participant_id": "person_016",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 97,
+      "participant_id": "person_021",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 98,
+      "participant_id": "person_011",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 99,
+      "participant_id": "person_026",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 100,
+      "participant_id": "person_010",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 101,
+      "participant_id": "person_012",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 102,
+      "participant_id": "person_009",
+      "reason": "unknown_view",
+      "view": "unknown"
+    },
+    {
+      "row": 103,
+      "participant_id": "person_027",
+      "reason": "unknown_view",
+      "view": "unknown"
+    }
+  ],
+  "pairs": [
+    {
+      "participant_id": "person_001",
+      "distance_cm": "150",
+      "front_image": "images/siva_150F.jpg",
+      "side_image": "images/siva_150S.jpg",
+      "height_cm": 158.5,
+      "weight_kg": 56.0,
+      "images_present": true,
+      "source_rows": [
+        2,
+        3
+      ]
+    },
+    {
+      "participant_id": "person_001",
+      "distance_cm": "200",
+      "front_image": "images/siva_200F.jpg",
+      "side_image": "images/siva_200S.jpg",
+      "height_cm": 158.5,
+      "weight_kg": 56.0,
+      "images_present": true,
+      "source_rows": [
+        4,
+        5
+      ]
+    },
+    {
+      "participant_id": "person_002",
+      "distance_cm": "150",
+      "front_image": "images/santhosh_150F.jpg",
+      "side_image": "images/santhosh_150S.jpg",
+      "height_cm": 174.0,
+      "weight_kg": 87.0,
+      "images_present": true,
+      "source_rows": [
+        6,
+        7
+      ]
+    },
+    {
+      "participant_id": "person_002",
+      "distance_cm": "200",
+      "front_image": "images/santhosh_200F.jpg",
+      "side_image": "images/santhosh_200S.jpg",
+      "height_cm": 174.0,
+      "weight_kg": 87.0,
+      "images_present": true,
+      "source_rows": [
+        8,
+        9
+      ]
+    },
+    {
+      "participant_id": "person_003",
+      "distance_cm": "150",
+      "front_image": "images/balaji_150F.jpg",
+      "side_image": "images/balaji_150S.jpg",
+      "height_cm": 154.0,
+      "weight_kg": 55.0,
+      "images_present": true,
+      "source_rows": [
+        10,
+        11
+      ]
+    },
+    {
+      "participant_id": "person_004",
+      "distance_cm": "150",
+      "front_image": "images/kanth_150F.jpg",
+      "side_image": "images/kanth_150S.jpg",
+      "height_cm": 152.4,
+      "weight_kg": 46.0,
+      "images_present": true,
+      "source_rows": [
+        12,
+        13
+      ]
+    },
+    {
+      "participant_id": "person_004",
+      "distance_cm": "200",
+      "front_image": "images/kanth_200F.jpg",
+      "side_image": "images/kanth_200S.jpg",
+      "height_cm": 152.4,
+      "weight_kg": 46.0,
+      "images_present": true,
+      "source_rows": [
+        14,
+        15
+      ]
+    },
+    {
+      "participant_id": "person_005",
+      "distance_cm": "150",
+      "front_image": "images/bhargav_150F.jpg",
+      "side_image": "images/bhargav_150S.jpg",
+      "height_cm": 173.74,
+      "weight_kg": 68.0,
+      "images_present": true,
+      "source_rows": [
+        16,
+        17
+      ]
+    },
+    {
+      "participant_id": "person_005",
+      "distance_cm": "200",
+      "front_image": "images/bhargav_200F.jpg",
+      "side_image": "images/bhargav_200S.jpg",
+      "height_cm": 173.74,
+      "weight_kg": 68.0,
+      "images_present": true,
+      "source_rows": [
+        18,
+        19
+      ]
+    },
+    {
+      "participant_id": "person_006",
+      "distance_cm": "150",
+      "front_image": "images/srinu_150F.jpg",
+      "side_image": "images/srinu_150S.jpg",
+      "height_cm": 158.0,
+      "weight_kg": 45.0,
+      "images_present": true,
+      "source_rows": [
+        20,
+        21
+      ]
+    },
+    {
+      "participant_id": "person_006",
+      "distance_cm": "200",
+      "front_image": "images/srinu_200F.jpg",
+      "side_image": "images/srinu_200S.jpg",
+      "height_cm": 158.0,
+      "weight_kg": 45.0,
+      "images_present": true,
+      "source_rows": [
+        22,
+        23
+      ]
+    },
+    {
+      "participant_id": "person_007",
+      "distance_cm": "150",
+      "front_image": "images/prasanth_150F.jpg",
+      "side_image": "images/prasanth_150S.jpg",
+      "height_cm": 167.64,
+      "weight_kg": 51.0,
+      "images_present": true,
+      "source_rows": [
+        24,
+        25
+      ]
+    },
+    {
+      "participant_id": "person_007",
+      "distance_cm": "200",
+      "front_image": "images/prasanth_200F.jpg",
+      "side_image": "images/prasanth_200S.jpg",
+      "height_cm": 167.64,
+      "weight_kg": 51.0,
+      "images_present": true,
+      "source_rows": [
+        26,
+        27
+      ]
+    },
+    {
+      "participant_id": "person_008",
+      "distance_cm": "150",
+      "front_image": "images/subbu_150F.jpg",
+      "side_image": "images/subbu_150S.jpg",
+      "height_cm": 158.0,
+      "weight_kg": 76.0,
+      "images_present": true,
+      "source_rows": [
+        28,
+        29
+      ]
+    },
+    {
+      "participant_id": "person_008",
+      "distance_cm": "200",
+      "front_image": "images/subbu_200F.jpg",
+      "side_image": "images/subbu_200S.jpg",
+      "height_cm": 158.0,
+      "weight_kg": 76.0,
+      "images_present": true,
+      "source_rows": [
+        30,
+        31
+      ]
+    },
+    {
+      "participant_id": "person_009",
+      "distance_cm": "150",
+      "front_image": "images/shafi_150F.jpg",
+      "side_image": "images/shafi_150S.jpg",
+      "height_cm": 161.0,
+      "weight_kg": 65.0,
+      "images_present": true,
+      "source_rows": [
+        32,
+        33
+      ]
+    },
+    {
+      "participant_id": "person_009",
+      "distance_cm": "200",
+      "front_image": "images/shafi_200F.jpg",
+      "side_image": "images/shafi_200S.jpg",
+      "height_cm": 161.0,
+      "weight_kg": 65.0,
+      "images_present": true,
+      "source_rows": [
+        34,
+        35
+      ]
+    },
+    {
+      "participant_id": "person_010",
+      "distance_cm": "150",
+      "front_image": "images/manoj_150F.jpg",
+      "side_image": "images/manoj_150S.jpg",
+      "height_cm": 157.0,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        36,
+        37
+      ]
+    },
+    {
+      "participant_id": "person_011",
+      "distance_cm": "150",
+      "front_image": "images/eswar_150F.jpg",
+      "side_image": "images/eswar_150S.jpg",
+      "height_cm": 174.0,
+      "weight_kg": 64.0,
+      "images_present": true,
+      "source_rows": [
+        38,
+        39
+      ]
+    },
+    {
+      "participant_id": "person_011",
+      "distance_cm": "200",
+      "front_image": "images/eswar_200F.jpg",
+      "side_image": "images/eswar_200S.jpg",
+      "height_cm": 174.0,
+      "weight_kg": 64.0,
+      "images_present": true,
+      "source_rows": [
+        40,
+        41
+      ]
+    },
+    {
+      "participant_id": "person_012",
+      "distance_cm": "150",
+      "front_image": "images/hemanth_150F.jpg",
+      "side_image": "images/hemanth_150S.jpg",
+      "height_cm": 160.02,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        42,
+        43
+      ]
+    },
+    {
+      "participant_id": "person_012",
+      "distance_cm": "200",
+      "front_image": "images/hemanth_200F.jpg",
+      "side_image": "images/hemanth_200S.jpg",
+      "height_cm": 160.02,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        44,
+        45
+      ]
+    },
+    {
+      "participant_id": "person_013",
+      "distance_cm": "150",
+      "front_image": "images/chethan_150F.jpg",
+      "side_image": "images/chethan_150S.jpg",
+      "height_cm": 167.0,
+      "weight_kg": 69.0,
+      "images_present": true,
+      "source_rows": [
+        46,
+        47
+      ]
+    },
+    {
+      "participant_id": "person_013",
+      "distance_cm": "200",
+      "front_image": "images/chethan_200F.jpg",
+      "side_image": "images/chethan_200S.jpg",
+      "height_cm": 167.0,
+      "weight_kg": 69.0,
+      "images_present": true,
+      "source_rows": [
+        48,
+        49
+      ]
+    },
+    {
+      "participant_id": "person_014",
+      "distance_cm": "150",
+      "front_image": "images/mahaboob_150F.jpg",
+      "side_image": "images/mahaboob_150S.jpg",
+      "height_cm": 162.56,
+      "weight_kg": 74.0,
+      "images_present": true,
+      "source_rows": [
+        50,
+        51
+      ]
+    },
+    {
+      "participant_id": "person_014",
+      "distance_cm": "200",
+      "front_image": "images/mahaboob_200F.jpg",
+      "side_image": "images/mahaboob_200S.jpg",
+      "height_cm": 162.56,
+      "weight_kg": 74.0,
+      "images_present": true,
+      "source_rows": [
+        52,
+        53
+      ]
+    },
+    {
+      "participant_id": "person_015",
+      "distance_cm": "150",
+      "front_image": "images/tharun_150F.jpg",
+      "side_image": "images/tharun_150S.jpg",
+      "height_cm": 169.0,
+      "weight_kg": 75.0,
+      "images_present": true,
+      "source_rows": [
+        54,
+        55
+      ]
+    },
+    {
+      "participant_id": "person_015",
+      "distance_cm": "200",
+      "front_image": "images/tharun_200F.jpg",
+      "side_image": "images/tharun_200S.jpg",
+      "height_cm": 169.0,
+      "weight_kg": 75.0,
+      "images_present": true,
+      "source_rows": [
+        56,
+        57
+      ]
+    },
+    {
+      "participant_id": "person_016",
+      "distance_cm": "150",
+      "front_image": "images/gopal_150F.jpg",
+      "side_image": "images/gopal_150S.jpg",
+      "height_cm": 176.0,
+      "weight_kg": 81.0,
+      "images_present": true,
+      "source_rows": [
+        58,
+        59
+      ]
+    },
+    {
+      "participant_id": "person_016",
+      "distance_cm": "200",
+      "front_image": "images/gopal_200F.jpg",
+      "side_image": "images/gopal_200S.jpg",
+      "height_cm": 176.0,
+      "weight_kg": 81.0,
+      "images_present": true,
+      "source_rows": [
+        60,
+        61
+      ]
+    },
+    {
+      "participant_id": "person_017",
+      "distance_cm": "150",
+      "front_image": "images/venkey_150F.jpg",
+      "side_image": "images/venkey_150S.jpg",
+      "height_cm": 180.34,
+      "weight_kg": 80.0,
+      "images_present": true,
+      "source_rows": [
+        62,
+        63
+      ]
+    },
+    {
+      "participant_id": "person_017",
+      "distance_cm": "200",
+      "front_image": "images/venkey_200F.jpg",
+      "side_image": "images/venkey_200S.jpg",
+      "height_cm": 180.34,
+      "weight_kg": 80.0,
+      "images_present": true,
+      "source_rows": [
+        64,
+        65
+      ]
+    },
+    {
+      "participant_id": "person_018",
+      "distance_cm": "150",
+      "front_image": "images/prem_150F.jpg",
+      "side_image": "images/prem_150S.jpg",
+      "height_cm": 170.0,
+      "weight_kg": 68.0,
+      "images_present": true,
+      "source_rows": [
+        66,
+        67
+      ]
+    },
+    {
+      "participant_id": "person_018",
+      "distance_cm": "200",
+      "front_image": "images/prem_200F.jpg",
+      "side_image": "images/prem_200S.jpg",
+      "height_cm": 170.0,
+      "weight_kg": 68.0,
+      "images_present": true,
+      "source_rows": [
+        68,
+        69
+      ]
+    },
+    {
+      "participant_id": "person_019",
+      "distance_cm": "150",
+      "front_image": "images/vijay_150F.jpg",
+      "side_image": "images/vijay_150S.jpg",
+      "height_cm": 168.0,
+      "weight_kg": 65.0,
+      "images_present": true,
+      "source_rows": [
+        70,
+        71
+      ]
+    },
+    {
+      "participant_id": "person_019",
+      "distance_cm": "200",
+      "front_image": "images/vijay_200F.jpg",
+      "side_image": "images/vijay_200S.jpg",
+      "height_cm": 168.0,
+      "weight_kg": 65.0,
+      "images_present": true,
+      "source_rows": [
+        72,
+        73
+      ]
+    },
+    {
+      "participant_id": "person_020",
+      "distance_cm": "150",
+      "front_image": "images/pavan_150F.jpg",
+      "side_image": "images/pavan_150S.jpg",
+      "height_cm": 170.18,
+      "weight_kg": 74.0,
+      "images_present": true,
+      "source_rows": [
+        74,
+        75
+      ]
+    },
+    {
+      "participant_id": "person_020",
+      "distance_cm": "200",
+      "front_image": "images/pavan_200F.jpg",
+      "side_image": "images/pavan_200S.jpg",
+      "height_cm": 170.18,
+      "weight_kg": 74.0,
+      "images_present": true,
+      "source_rows": [
+        76,
+        77
+      ]
+    },
+    {
+      "participant_id": "person_021",
+      "distance_cm": "150",
+      "front_image": "images/abdul_150F.jpg",
+      "side_image": "images/abdul_150S.jpg",
+      "height_cm": 156.0,
+      "weight_kg": 67.0,
+      "images_present": true,
+      "source_rows": [
+        78,
+        79
+      ]
+    },
+    {
+      "participant_id": "person_021",
+      "distance_cm": "200",
+      "front_image": "images/abdul_200F.jpg",
+      "side_image": "images/abdul_200S.jpg",
+      "height_cm": 156.0,
+      "weight_kg": 67.0,
+      "images_present": true,
+      "source_rows": [
+        80,
+        81
+      ]
+    },
+    {
+      "participant_id": "person_022",
+      "distance_cm": "150",
+      "front_image": "images/afzal_150F.jpg",
+      "side_image": "images/afzal_150S.jpg",
+      "height_cm": 164.0,
+      "weight_kg": 77.0,
+      "images_present": true,
+      "source_rows": [
+        82,
+        83
+      ]
+    },
+    {
+      "participant_id": "person_022",
+      "distance_cm": "200",
+      "front_image": "images/afzal_200F.jpg",
+      "side_image": "images/afzal_200S.jpg",
+      "height_cm": 164.0,
+      "weight_kg": 77.0,
+      "images_present": true,
+      "source_rows": [
+        84,
+        85
+      ]
+    },
+    {
+      "participant_id": "person_028",
+      "distance_cm": "150",
+      "front_image": "images/Venkeswaro_150F.jpeg",
+      "side_image": "images/Venkeswaro_150S.jpeg",
+      "height_cm": 168.0,
+      "weight_kg": 61.0,
+      "images_present": true,
+      "source_rows": [
+        106,
+        107
+      ]
+    },
+    {
+      "participant_id": "person_028",
+      "distance_cm": "200",
+      "front_image": "images/Venkeswaro_200F.jpeg",
+      "side_image": "images/Venkeswaro_200S.jpeg",
+      "height_cm": 168.0,
+      "weight_kg": 61.0,
+      "images_present": true,
+      "source_rows": [
+        108,
+        109
+      ]
+    },
+    {
+      "participant_id": "person_030",
+      "distance_cm": "150",
+      "front_image": "images/ratna_150F.jpeg",
+      "side_image": "images/ratna_150S.jpeg",
+      "height_cm": 171.5,
+      "weight_kg": 76.0,
+      "images_present": true,
+      "source_rows": [
+        110,
+        111
+      ]
+    },
+    {
+      "participant_id": "person_030",
+      "distance_cm": "168",
+      "front_image": "images/ratna_168F.jpeg",
+      "side_image": "images/ratna_168S.jpeg",
+      "height_cm": 171.5,
+      "weight_kg": 76.0,
+      "images_present": true,
+      "source_rows": [
+        112,
+        113
+      ]
+    },
+    {
+      "participant_id": "person_031",
+      "distance_cm": "140",
+      "front_image": "images/sri_charan_140F.jpeg",
+      "side_image": "images/sri_charan_140S.jpeg",
+      "height_cm": 173.0,
+      "weight_kg": 54.5,
+      "images_present": true,
+      "source_rows": [
+        116,
+        117
+      ]
+    },
+    {
+      "participant_id": "person_031",
+      "distance_cm": "200",
+      "front_image": "images/sri_charan_200F.jpeg",
+      "side_image": "images/sri_charan_200S.jpeg",
+      "height_cm": 173.0,
+      "weight_kg": 54.5,
+      "images_present": true,
+      "source_rows": [
+        114,
+        115
+      ]
+    },
+    {
+      "participant_id": "person_032",
+      "distance_cm": "150",
+      "front_image": "images/charan_preeth_150F.jpeg",
+      "side_image": "images/charan_preeth_150S.jpeg",
+      "height_cm": 170.5,
+      "weight_kg": 90.0,
+      "images_present": true,
+      "source_rows": [
+        120,
+        121
+      ]
+    },
+    {
+      "participant_id": "person_032",
+      "distance_cm": "180",
+      "front_image": "images/charan_preeth_180F.jpeg",
+      "side_image": "images/charan_preeth_180S.jpeg",
+      "height_cm": 170.5,
+      "weight_kg": 90.0,
+      "images_present": true,
+      "source_rows": [
+        118,
+        119
+      ]
+    },
+    {
+      "participant_id": "person_033",
+      "distance_cm": "140",
+      "front_image": "images/mukesh_140F.jpeg",
+      "side_image": "images/mukesh_140S.jpeg",
+      "height_cm": 167.0,
+      "weight_kg": 71.0,
+      "images_present": true,
+      "source_rows": [
+        124,
+        125
+      ]
+    },
+    {
+      "participant_id": "person_033",
+      "distance_cm": "180",
+      "front_image": "images/mukesh_180F.jpeg",
+      "side_image": "images/mukesh_180S.jpeg",
+      "height_cm": 165.5,
+      "weight_kg": 71.0,
+      "images_present": true,
+      "source_rows": [
+        122,
+        123
+      ]
+    },
+    {
+      "participant_id": "person_034",
+      "distance_cm": "140",
+      "front_image": "images/gaurav_140F.jpeg",
+      "side_image": "images/gaurav_140S.jpeg",
+      "height_cm": 156.0,
+      "weight_kg": 60.0,
+      "images_present": true,
+      "source_rows": [
+        126,
+        127
+      ]
+    },
+    {
+      "participant_id": "person_034",
+      "distance_cm": "180",
+      "front_image": "images/gaurav_180F.jpeg",
+      "side_image": "images/gaurav_180S.jpeg",
+      "height_cm": 156.0,
+      "weight_kg": 60.0,
+      "images_present": true,
+      "source_rows": [
+        128,
+        129
+      ]
+    },
+    {
+      "participant_id": "person_035",
+      "distance_cm": "150",
+      "front_image": "images/vamsi_150F.jpeg",
+      "side_image": "images/vamsi_150S.jpeg",
+      "height_cm": 180.0,
+      "weight_kg": 90.0,
+      "images_present": true,
+      "source_rows": [
+        132,
+        133
+      ]
+    },
+    {
+      "participant_id": "person_035",
+      "distance_cm": "180",
+      "front_image": "images/vamsi_180F.jpeg",
+      "side_image": "images/vamsi_180S.jpeg",
+      "height_cm": 180.0,
+      "weight_kg": 90.0,
+      "images_present": true,
+      "source_rows": [
+        130,
+        131
+      ]
+    },
+    {
+      "participant_id": "person_036",
+      "distance_cm": "140",
+      "front_image": "images/siva_karthik_140F.jpeg",
+      "side_image": "images/siva_karthik_140S.jpeg",
+      "height_cm": 170.0,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        134,
+        135
+      ]
+    },
+    {
+      "participant_id": "person_036",
+      "distance_cm": "185",
+      "front_image": "images/siva_karthik_185F.jpeg",
+      "side_image": "images/siva_karthik_185S.jpeg",
+      "height_cm": 170.0,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        136,
+        137
+      ]
+    },
+    {
+      "participant_id": "person_037",
+      "distance_cm": "135",
+      "front_image": "images/sreemanth_135F.jpeg",
+      "side_image": "images/sreemanth_135S.jpeg",
+      "height_cm": 170.0,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        138,
+        139
+      ]
+    },
+    {
+      "participant_id": "person_037",
+      "distance_cm": "180",
+      "front_image": "images/sreemanth_180F.jpeg",
+      "side_image": "images/sreemanth_180S.jpeg",
+      "height_cm": 170.0,
+      "weight_kg": 50.0,
+      "images_present": true,
+      "source_rows": [
+        140,
+        141
+      ]
+    },
+    {
+      "participant_id": "person_038",
+      "distance_cm": "140",
+      "front_image": "images/roshith_140F.jpeg",
+      "side_image": "images/roshith_140S.jpeg",
+      "height_cm": 177.5,
+      "weight_kg": 69.0,
+      "images_present": true,
+      "source_rows": [
+        144,
+        145
+      ]
+    },
+    {
+      "participant_id": "person_038",
+      "distance_cm": "180",
+      "front_image": "images/roshith_180F.jpeg",
+      "side_image": "images/roshith_180S.jpeg",
+      "height_cm": 177.5,
+      "weight_kg": 69.0,
+      "images_present": true,
+      "source_rows": [
+        142,
+        143
+      ]
+    },
+    {
+      "participant_id": "person_039",
+      "distance_cm": "140",
+      "front_image": "images/dinesh_140F.jpeg",
+      "side_image": "images/dinesh_140S.jpeg",
+      "height_cm": 175.0,
+      "weight_kg": 87.0,
+      "images_present": true,
+      "source_rows": [
+        148,
+        149
+      ]
+    },
+    {
+      "participant_id": "person_039",
+      "distance_cm": "185",
+      "front_image": "images/dinesh_185F.jpeg",
+      "side_image": "images/dinesh_185S.jpeg",
+      "height_cm": 175.0,
+      "weight_kg": 87.0,
+      "images_present": true,
+      "source_rows": [
+        146,
+        147
+      ]
+    },
+    {
+      "participant_id": "person_040",
+      "distance_cm": "150",
+      "front_image": "images/aditya_150F.jpeg",
+      "side_image": "images/aditya_150S.jpeg",
+      "height_cm": 179.5,
+      "weight_kg": 55.0,
+      "images_present": true,
+      "source_rows": [
+        150,
+        151
+      ]
+    },
+    {
+      "participant_id": "person_040",
+      "distance_cm": "190",
+      "front_image": "images/aditya_190F.jpeg",
+      "side_image": "images/aditya_190S.jpeg",
+      "height_cm": 179.5,
+      "weight_kg": 55.0,
+      "images_present": true,
+      "source_rows": [
+        152,
+        153
+      ]
+    },
+    {
+      "participant_id": "person_041",
+      "distance_cm": "140",
+      "front_image": "images/cpstine_140F.jpeg",
+      "side_image": "images/cpstine_140S.jpeg",
+      "height_cm": 171.0,
+      "weight_kg": 86.0,
+      "images_present": true,
+      "source_rows": [
+        154,
+        155
+      ]
+    }
+  ],
+  "unpaired": [
+    {
+      "participant_id": "person_025",
+      "distance_cm": "150",
+      "view": "side",
+      "source_row": 104
+    },
+    {
+      "participant_id": "person_025",
+      "distance_cm": "200",
+      "view": "side",
+      "source_row": 105
+    }
+  ],
+  "cohort_limitations": [
+    "single small cohort",
+    "no independent external test cohort"
+  ]
+}

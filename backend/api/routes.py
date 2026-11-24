@@ -7,12 +7,13 @@ Exposes:
 """
 
 import os
-import shutil
 import tempfile
 import logging
 import csv
+import math
 import subprocess
 import sys
+import cv2
 from pathlib import Path
 from typing import Literal
 
@@ -43,6 +44,7 @@ from services.dataset_catalog import (
 )
 from services.height_estimator import estimate_height
 from services.weight_estimator import (
+    FEATURE_METADATA,
     calibrate_height,
     estimate_weight,
     reload_trained_models,
@@ -51,6 +53,131 @@ from services.weight_estimator import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Height & Weight Estimation"])
+MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+
+
+def _derived_anthropometry(front: dict | None, side: dict | None) -> dict:
+    """Create explicitly experimental, dimensionless cross-view proxies."""
+    result = {
+        "schema_version": "derived-anthropometry-proxy-v1",
+        "notice": "Exploratory dimensionless proxies; not measured circumference, body composition, or physical volume.",
+        "derived_features": {},
+    }
+    if not front:
+        return result
+    front_features = front.get("measurements", {})
+    derived = result["derived_features"]
+
+    def add(name: str, value, formula: str, assumptions: str, unit="ratio", valid=True):
+        derived[name] = {
+            "value": round(float(value), 6) if value is not None else None,
+            "unit": unit,
+            "valid": bool(valid and value is not None),
+            "reason": None if valid and value is not None else "required_view_or_measurement_unavailable",
+            "formula": formula,
+            "assumptions": assumptions,
+        }
+
+    shoulder = front_features.get("shoulder_landmark_span_over_pixel_height", {})
+    hip = front_features.get("hip_landmark_span_over_pixel_height", {})
+    if shoulder.get("valid") and hip.get("valid") and hip.get("value"):
+        add("shoulder_to_hip_ratio", shoulder["value"] / hip["value"], "front shoulder landmark span / front hip landmark span", "Same front view and normalized pixel-height scale.")
+    else:
+        add("shoulder_to_hip_ratio", None, "front shoulder span / front hip span", "Requires valid front-view shoulder and hip landmarks.", valid=False)
+    waist = front_features.get("waist_span_over_pixel_height", {})
+    if waist.get("valid"):
+        add("waist_to_height_ratio", waist["value"], "front waist projected span / detected pixel height", "Image-space ratio only; scale source is unavailable.")
+    else:
+        add("waist_to_height_ratio", None, "front waist projected span / detected pixel height", "Requires a valid front waist mask band.", valid=False)
+    chest = front_features.get("chest_span_over_pixel_height", {})
+    if chest.get("valid") and waist.get("valid") and waist.get("value"):
+        add("chest_to_waist_ratio", chest["value"] / waist["value"], "front chest projected span / front waist projected span", "Both spans are segmentation-derived proxies from one verified front view.")
+    else:
+        add("chest_to_waist_ratio", None, "front chest projected span / front waist projected span", "Requires valid chest and waist mask bands.", valid=False)
+
+    bands = ("chest", "waist", "abdomen", "hip")
+    if side:
+        side_features = side.get("measurements", {})
+        cross_sections = []
+        for band in bands:
+            front_item = front_features.get(f"{band}_span_over_pixel_height", {})
+            side_item = side_features.get(f"{band}_span_over_pixel_height", {})
+            valid = front_item.get("valid") and side_item.get("valid") and front_item.get("value") not in (None, 0)
+            ratio = side_item.get("value") / front_item.get("value") if valid else None
+            add(f"side_to_front_{band}_span_ratio", ratio, f"side {band} span / front {band} span", "Front projected width and side projected depth are dimensionless image proxies; views must depict the same person and capture setup.", valid=valid)
+            area = (math.pi / 4.0) * front_item["value"] * side_item["value"] if valid else None
+            y = (front_item.get("relative_height_over_pixel_height") + side_item.get("relative_height_over_pixel_height")) / 2 if valid else None
+            cross_sections.append((band, area, y, valid))
+        segment_values = []
+        for first, second in zip(cross_sections, cross_sections[1:]):
+            valid = first[3] and second[3] and first[2] is not None and second[2] is not None
+            volume_index = ((first[1] + second[1]) / 2 * abs(second[2] - first[2])) if valid else None
+            segment_values.append(volume_index)
+            add(f"{first[0]}_to_{second[0]}_volume_proxy_index", volume_index,
+                "mean(endpoint π/4 × front_span_ratio × side_span_ratio) × normalized vertical gap",
+                "Elliptical cross-sections, aligned views, and a shared pixel-height normalization are assumed; index is dimensionless, not human body volume.",
+                unit="dimensionless_index", valid=valid)
+        total_valid = all(value is not None for value in segment_values)
+        add("body_volume_proxy_index", sum(segment_values) if total_valid else None,
+            "sum of adjacent cross-section proxy indices", "Exploratory silhouette proxy only; not physical volume or body composition.",
+            unit="dimensionless_index", valid=total_valid)
+    else:
+        for band in bands:
+            add(f"side_to_front_{band}_span_ratio", None, "side span / front span", "Requires a verified paired front and side view.", valid=False)
+        add("body_volume_proxy_index", None, "sum of adjacent proxy cross-sections", "Requires valid paired front and side views.", unit="dimensionless_index", valid=False)
+    return result
+
+
+def _quality_signal(details: dict | None, detection_confidence: float | None) -> dict:
+    details = details or {}
+    return {
+        "person_detection": {
+            "status": "passed" if details.get("person_count") == 1 else "not_checked",
+            "person_count": details.get("person_count"),
+            "raw_detector_score": detection_confidence,
+            "interpretation": "Raw detector score, not a probability of measurement accuracy.",
+        },
+        "view_validity": {
+            "status": "passed" if details.get("expected_view") in {"front", "side"} else "not_verified",
+            "expected_view": details.get("expected_view"),
+            "shoulder_span_to_height_ratio": details.get("shoulder_span_to_height_ratio"),
+        },
+        "pose": {
+            "status": "passed" if (details.get("nose_pose_visibility") or 0) >= 0.5 else "not_checked",
+            "nose_landmark_visibility": details.get("nose_pose_visibility"),
+            "posture_warning": details.get("posture_warning"),
+        },
+        "segmentation": {
+            "status": "passed" if 0.04 <= (details.get("segmentation_fill_ratio") or 0) <= 0.85 else "not_checked",
+            "foreground_fill_ratio": details.get("segmentation_fill_ratio"),
+        },
+        "overall_request": "accepted_after_heuristic_checks" if details.get("quality_gate_enabled") else "accepted_without_v2_quality_gates",
+    }
+
+
+async def _save_image_upload(upload: UploadFile, suffix: str) -> str:
+    """Stream an upload to a temporary file with a strict byte limit."""
+    total = 0
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as destination:
+            temporary_path = destination.name
+            while chunk := await upload.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Image is larger than the 12 MB upload limit.")
+                destination.write(chunk)
+        decoded = cv2.imread(temporary_path)
+        if decoded is None:
+            raise HTTPException(status_code=400, detail="Upload is not a readable image. Retake or choose a JPG, PNG, or WEBP file.")
+        height, width = decoded.shape[:2]
+        if width < 100 or height < 100 or width * height > 30_000_000:
+            raise HTTPException(status_code=400, detail="Image dimensions are unsupported. Upload an image between 100 px and 30 megapixels.")
+        return temporary_path
+    except Exception:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +217,17 @@ async def predict_body(
         le=2000.0,
         description="Horizontal distance from the camera to the person in centimetres.",
     ),
+    api_version: Literal["1", "2"] = Form(default="1"),
+    prediction_mode: Literal["height", "weight_a_only", "weight_a_plus_c"] = Form(default="height"),
 ):
+    if api_version == "2":
+        if prediction_mode == "weight_a_plus_c":
+            raise HTTPException(
+                status_code=501,
+                detail="A+C prediction is unavailable: no participant-grouped model has been trained with self-reported inputs. Choose visual-only mode or skip prediction.",
+            )
+        if prediction_mode != "height" and file_side is None:
+            raise HTTPException(status_code=422, detail="Front and side images are required for weight modes.")
     # --- Validate file type ---
     content_type = file.content_type or ""
     if not content_type.startswith("image/"):
@@ -111,20 +248,19 @@ async def predict_body(
     tmp_path = None
     tmp_path_side = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            tmp_path = tmp.name
+        tmp_path = await _save_image_upload(file, suffix)
 
         if file_side:
+            if not (file_side.content_type or "").startswith("image/"):
+                raise HTTPException(status_code=400, detail="Side upload must be an image.")
             side_suffix = os.path.splitext(file_side.filename or "upload_side.jpg")[-1].lower() or ".jpg"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=side_suffix) as tmp_side:
-                shutil.copyfileobj(file_side.file, tmp_side)
-                tmp_path_side = tmp_side.name
+            if side_suffix not in allowed_extensions:
+                raise HTTPException(status_code=400, detail="Unsupported side image file extension.")
+            tmp_path_side = await _save_image_upload(file_side, side_suffix)
 
         logger.info(
-            "predict-body called | file=%s side_file=%s camera_h=%.1f dist=%.1f",
-            file.filename,
-            file_side.filename if file_side else "None",
+            "predict-body called | has_side=%s camera_h=%.1f dist=%.1f",
+            bool(file_side),
             camera_height_cm,
             distance_cm,
         )
@@ -134,11 +270,15 @@ async def predict_body(
             camera_height_cm=camera_height_cm,
             distance_cm=distance_cm,
             height_calibrator=calibrate_height,
+            strict_quality_checks=(api_version == "2"),
+            expected_view="front" if api_version == "2" else None,
         )
         features = result.pop("_weight_features")
         segmented_image = result.pop("_segmented_image_base64")
         detection_image = result.pop("_detection_image_base64")
         pose_image = result.pop("_pose_image_base64")
+        front_quality_details = result.pop("quality_details", None)
+        front_anthropometry = result.pop("anthropometric_features", None)
         geometric_height = result["geometric_height_cm"]
         calibrated_height = result["estimated_height_cm"]
         
@@ -146,25 +286,35 @@ async def predict_body(
         features["estimated_height_cm"] = calibrated_height
         result["geometric_height_cm"] = geometric_height
         
-        # Estimate weight (Front)
+        # Both modes use the deployed visual-only baseline. A+C is rejected
+        # above until a model has been trained and evaluated for that schema.
         front_weight_est = estimate_weight(features)
         side_weight_estimate = None
         side_segmented_image = None
         side_detection_image = None
         side_pose_image = None
+        side_features = None
+        side_quality_details = None
+        side_anthropometry = None
+        side_detection_confidence = None
         
         # If side image provided, average the weight estimates
-        if tmp_path_side:
+        if tmp_path_side and (api_version == "1" or prediction_mode != "height"):
             side_result = estimate_height(
                 image_path=tmp_path_side,
                 camera_height_cm=camera_height_cm,
                 distance_cm=distance_cm,
                 height_calibrator=calibrate_height,
+                strict_quality_checks=(api_version == "2"),
+                expected_view="side" if api_version == "2" else None,
             )
             side_features = side_result.pop("_weight_features")
             side_segmented_image = side_result.pop("_segmented_image_base64")
             side_detection_image = side_result.pop("_detection_image_base64")
             side_pose_image = side_result.pop("_pose_image_base64")
+            side_quality_details = side_result.get("quality_details")
+            side_detection_confidence = side_result.get("detection_confidence_score")
+            side_anthropometry = side_result.pop("anthropometric_features", None)
             side_features["estimated_height_cm"] = side_result["estimated_height_cm"]
             side_weight_est = estimate_weight(side_features)
             side_weight_estimate = side_weight_est["estimated_weight_kg"]
@@ -185,9 +335,38 @@ async def predict_body(
             ]
             result["weight_model_available"] = front_weight_est["weight_model_available"]
             result["annotated_image_base64_side"] = side_result["annotated_image_base64"]
-        else:
+        elif api_version == "1" or prediction_mode != "height":
             result.update(front_weight_est)
             result["annotated_image_base64_side"] = None
+
+        if api_version == "2":
+            if prediction_mode == "height":
+                result.pop("estimated_weight_kg", None)
+                result.pop("estimated_weight_lb", None)
+                result.pop("weight_estimate_range_kg", None)
+            result["api_version"] = "2"
+            result["model_version"] = "bodyvision-2.0-baseline-artifacts"
+            result["feature_version"] = "visual-proportions-v1"
+            result["prediction_mode"] = prediction_mode
+            if prediction_mode == "height":
+                result["estimate_value"] = result["estimated_height_cm"]
+                result["estimate_unit"] = "cm"
+            else:
+                result["estimate_value"] = result["estimated_weight_kg"]
+                result["estimate_unit"] = "kg"
+            result["features_used"] = (
+                ["image_geometry"] if prediction_mode == "height" else
+                ["legacy_visual_proportions", "two_view_legacy_average"]
+            )
+            result["quality_flags"] = [
+                "legacy_feature_model",
+                "capture_quality_heuristics_applied",
+                "uncertainty_not_calibrated",
+                "camera_intrinsics_not_calibrated",
+            ]
+            result["features_used"] = list(result["features_used"]) + ["anthropometry_proxy_v1_not_model_input"]
+            result.pop("weight_estimate_range_kg", None)
+            result["notice"] = "Approximate research estimate from image-derived proxies; verify height or weight with direct measurement."
 
         result["pipeline"] = {
             "geometric_height_cm": geometric_height,
@@ -195,6 +374,25 @@ async def predict_body(
             "front_weight_estimate_kg": front_weight_est["estimated_weight_kg"],
             "side_weight_estimate_kg": side_weight_estimate,
             "feature_values": features,
+            "side_feature_values": side_features,
+            "feature_metadata": FEATURE_METADATA,
+            "front_quality_details": front_quality_details,
+            "side_quality_details": side_quality_details,
+            "anthropometric_features": {
+                **(front_anthropometry or {}),
+                "derived": _derived_anthropometry(front_anthropometry, side_anthropometry),
+                "side_view": side_anthropometry,
+            },
+            "quality_assessment": {
+                "front": _quality_signal(front_quality_details, result.get("detection_confidence_score")),
+                "side": _quality_signal(side_quality_details, side_detection_confidence) if side_quality_details else None,
+                "camera_calibration": {
+                    "status": "not_calibrated",
+                    "source": "configured field of view with camera height and distance inputs",
+                    "height_correction": "separate dataset-trained Ridge correction; not physical camera calibration",
+                },
+                "weight_measurement": "approximate image-based estimate; no validated uncertainty interval",
+            },
             "detection_image_base64": detection_image,
             "pose_image_base64": pose_image,
             "detection_image_base64_side": side_detection_image,

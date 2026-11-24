@@ -14,14 +14,16 @@ import csv
 import hashlib
 import json
 import os
+import time
 import sys
+import time
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import ElasticNet, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GridSearchCV, GroupKFold
 from sklearn.pipeline import make_pipeline
@@ -34,6 +36,7 @@ DEFAULT_CSV = DATASET / "height_weight_dataset.csv"
 DEFAULT_OUTPUT = PROJECT / "paper" / "evaluation_results"
 sys.path.insert(0, str(BACKEND))
 
+from core.config import settings
 from services.height_estimator import estimate_height, load_models
 from services.weight_estimator import FEATURE_NAMES
 
@@ -47,10 +50,21 @@ REQUIRED_COLUMNS = {
 }
 ALPHAS = [0.1, 1.0, 10.0, 100.0]
 MAX_CV_FOLDS = 5
+FEATURE_VERSION = "visual-proportions-v1"
 
 
 def _normalize_group(value: str) -> str:
     return value.strip().casefold()
+
+
+def _assert_group_disjoint(train_groups: np.ndarray, test_groups: np.ndarray, context: str) -> None:
+    """Fail evaluation if any participant crosses a train/test boundary."""
+    overlap = set(train_groups) & set(test_groups)
+    if overlap:
+        raise ValueError(
+            f"Participant leakage in {context}: {len(overlap)} group(s) occur "
+            "in both train and test partitions."
+        )
 
 
 def _load_rows(
@@ -215,6 +229,35 @@ def _fit_calibrator(
     return calibrator
 
 
+def _new_weight_candidate(name: str, group_count: int) -> GridSearchCV:
+    """Create a grouped-CV weight search that is fitted only on outer train data."""
+    if group_count < 2:
+        raise ValueError("Grouped weight tuning needs at least two training participants.")
+    folds = GroupKFold(n_splits=min(MAX_CV_FOLDS, group_count))
+    if name == "ridge_tuned":
+        return GridSearchCV(
+            estimator=make_pipeline(StandardScaler(), Ridge()),
+            param_grid={"ridge__alpha": ALPHAS},
+            scoring="neg_mean_absolute_error",
+            cv=folds,
+            n_jobs=1,
+        )
+    if name == "elasticnet_tuned":
+        return GridSearchCV(
+            estimator=make_pipeline(
+                StandardScaler(), ElasticNet(max_iter=10000, random_state=0)
+            ),
+            param_grid={
+                "elasticnet__alpha": [0.01, 0.1, 1.0],
+                "elasticnet__l1_ratio": [0.1, 0.5, 0.9],
+            },
+            scoring="neg_mean_absolute_error",
+            cv=folds,
+            n_jobs=1,
+        )
+    raise ValueError(f"Unknown grouped weight candidate: {name}")
+
+
 def _package_version(package: str) -> str | None:
     try:
         return version(package)
@@ -226,6 +269,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--folds", type=int, default=MAX_CV_FOLDS)
+    parser.add_argument("--yolo-model", default=None, help="Detector weights to evaluate (default: configured baseline).")
+    parser.add_argument("--pose-complexity", type=int, choices=(0, 1, 2), default=None, help="MediaPipe Pose model: 0 lite, 1 full, 2 heavy.")
+    parser.add_argument(
+        "--pause-between-images",
+        type=float,
+        default=0.0,
+        help="Seconds to yield between image extractions (useful for CPU-heavy candidates).",
+    )
+    parser.add_argument(
+        "--low-priority",
+        action="store_true",
+        help="Lower this process's scheduling priority where supported.",
+    )
     parser.add_argument(
         "--exclude-missing-images",
         action="store_true",
@@ -234,10 +290,21 @@ def main() -> None:
     args = parser.parse_args()
     if args.folds < 2:
         parser.error("--folds must be at least 2")
+    if args.pause_between_images < 0:
+        parser.error("--pause-between-images cannot be negative")
+    if args.low_priority and hasattr(os, "nice"):
+        try:
+            os.nice(10)
+        except OSError:
+            pass
 
     csv_path = DEFAULT_CSV.resolve()
     image_dir = (DATASET / "images").resolve()
     output_dir = args.output_dir.resolve()
+    if args.yolo_model:
+        settings.YOLO_MODEL_PATH = args.yolo_model
+    if args.pose_complexity is not None:
+        settings.MP_MODEL_COMPLEXITY = args.pose_complexity
     rows, grouping_column, missing_image_count = _load_rows(
         csv_path,
         image_dir,
@@ -282,21 +349,56 @@ def main() -> None:
     load_models()
     feature_rows = []
     heights = []
-    for row in rows:
-        result = estimate_height(
-            str(image_dir / row["Image Name"]),
-            camera_height_cm=float(row["Camera height from ground (cm)"]),
-            distance_cm=float(row["Distance from camera (cm)"]),
-        )
-        feature_row = [
-            result["_weight_features"][feature] for feature in FEATURE_NAMES
-        ]
-        if len(feature_row) != len(FEATURE_NAMES) or not np.isfinite(feature_row).all():
-            raise ValueError(
-                f"Invalid or non-finite features extracted for {row['Image Name']}"
+    extraction_seconds = []
+    extraction_failures = []
+    for row_number, row in enumerate(rows, start=1):
+        extraction_started = time.perf_counter()
+        try:
+            result = estimate_height(
+                str(image_dir / row["Image Name"]),
+                camera_height_cm=float(row["Camera height from ground (cm)"]),
+                distance_cm=float(row["Distance from camera (cm)"]),
             )
-        feature_rows.append(feature_row)
-        heights.append(float(row["Height (cm)"]))
+        except Exception as error:
+            extraction_failures.append({"image_name": row["Image Name"], "error": str(error)})
+        else:
+            extraction_seconds.append(time.perf_counter() - extraction_started)
+            feature_row = [
+                result["_weight_features"][feature] for feature in FEATURE_NAMES
+            ]
+            if len(feature_row) != len(FEATURE_NAMES) or not np.isfinite(feature_row).all():
+                raise ValueError(
+                    f"Invalid or non-finite features extracted for {row['Image Name']}"
+                )
+            feature_rows.append(feature_row)
+            heights.append(float(row["Height (cm)"]))
+        if row_number % 10 == 0 or row_number == len(rows):
+            print(
+                f"Feature extraction: {row_number}/{len(rows)} images; "
+                f"failures: {len(extraction_failures)}",
+                flush=True,
+            )
+        if args.pause_between_images and row_number < len(rows):
+            time.sleep(args.pause_between_images)
+
+    if extraction_failures:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "extraction_benchmark.json").write_text(
+            json.dumps({
+                "detector_model": settings.YOLO_MODEL_PATH,
+                "pose_complexity": settings.MP_MODEL_COMPLEXITY,
+                "input_images": len(rows),
+                "successful_extractions": len(extraction_seconds),
+                "failed_extractions": len(extraction_failures),
+                "failure_rate": len(extraction_failures) / len(rows),
+                "failures": extraction_failures,
+            }, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        raise RuntimeError(
+            f"Feature extraction failed for {len(extraction_failures)}/{len(rows)} images; "
+            f"details saved to {output_dir / 'extraction_benchmark.json'}; no partial MAE reported."
+        )
 
     features = np.asarray(feature_rows, dtype=float)
     heights = np.asarray(heights, dtype=float)
@@ -315,10 +417,17 @@ def main() -> None:
     weight_oof = np.full(len(weights), np.nan)
     height_median_oof = np.full(len(heights), np.nan)
     weight_median_oof = np.full(len(weights), np.nan)
+    weight_candidate_oof = {
+        "ridge_tuned": np.full(len(weights), np.nan),
+        "elasticnet_tuned": np.full(len(weights), np.nan),
+    }
     fold_assignments = np.full(len(rows), -1, dtype=int)
     height_index = FEATURE_NAMES.index("estimated_height_cm")
 
     for fold_number, (train_indices, test_indices) in enumerate(outer_splits, start=1):
+        _assert_group_disjoint(
+            groups[train_indices], groups[test_indices], f"outer fold {fold_number}"
+        )
         train_groups = groups[train_indices]
         train_height_oof = np.full(len(train_indices), np.nan)
         inner_folds = GroupKFold(
@@ -329,6 +438,10 @@ def main() -> None:
         ):
             inner_train_indices = train_indices[inner_train]
             inner_test_indices = train_indices[inner_test]
+            _assert_group_disjoint(
+                groups[inner_train_indices], groups[inner_test_indices],
+                f"inner fold in outer fold {fold_number}",
+            )
             if len(set(groups[inner_train_indices])) < 2:
                 raise ValueError(
                     f"Inner fold in outer fold {fold_number} leaves fewer than two "
@@ -377,6 +490,31 @@ def main() -> None:
         regressor = make_pipeline(StandardScaler(), Ridge(alpha=1.0))
         regressor.fit(weight_train_features, weights[train_weight_indices])
         weight_oof[test_weight_indices] = regressor.predict(weight_test_features)
+
+        candidate_groups = groups[train_weight_indices]
+        ridge_candidate = _new_weight_candidate(
+            "ridge_tuned", len(set(candidate_groups))
+        )
+        ridge_candidate.fit(
+            weight_train_features,
+            weights[train_weight_indices],
+            groups=candidate_groups,
+        )
+        weight_candidate_oof["ridge_tuned"][test_weight_indices] = ridge_candidate.predict(
+            weight_test_features
+        )
+
+        elastic_candidate = _new_weight_candidate(
+            "elasticnet_tuned", len(set(candidate_groups))
+        )
+        elastic_candidate.fit(
+            weight_train_features,
+            weights[train_weight_indices],
+            groups=candidate_groups,
+        )
+        weight_candidate_oof["elasticnet_tuned"][test_weight_indices] = elastic_candidate.predict(
+            weight_test_features
+        )
         weight_median_oof[test_weight_indices] = _group_median(
             weights[train_weight_indices], groups[train_weight_indices]
         )
@@ -386,6 +524,7 @@ def main() -> None:
         and np.isfinite(height_median_oof).all()
         and np.isfinite(weight_oof[weight_mask]).all()
         and np.isfinite(weight_median_oof[weight_mask]).all()
+        and all(np.isfinite(values[weight_mask]).all() for values in weight_candidate_oof.values())
     ):
         raise RuntimeError(
             "Evaluation did not produce finite predictions for every row."
@@ -433,6 +572,18 @@ def main() -> None:
             "kg",
         ),
     }
+    for candidate_name, candidate_predictions in weight_candidate_oof.items():
+        candidate_targets, grouped_candidate_predictions = _grouped_values(
+            weights[weight_mask],
+            candidate_predictions[weight_mask],
+            groups[weight_mask],
+        )
+        metrics[f"{candidate_name}_weight_kg"] = _report(
+            f"{candidate_name} (nested grouped OOF)",
+            candidate_targets,
+            grouped_candidate_predictions,
+            "kg",
+        )
     grouping_description = "normalized participant_id values"
     print(
         f"Images: {len(rows)}; height groups: {group_count}; "
@@ -457,6 +608,8 @@ def main() -> None:
             "weight_true_kg",
             "weight_oof_kg",
             "weight_fold_median_kg",
+            "weight_ridge_tuned_kg",
+            "weight_elasticnet_tuned_kg",
         ]
         writer = csv.DictWriter(file, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
@@ -475,26 +628,67 @@ def main() -> None:
                     "weight_fold_median_kg": (
                         weight_median_oof[index] if weight_mask[index] else ""
                     ),
+                    "weight_ridge_tuned_kg": (
+                        weight_candidate_oof["ridge_tuned"][index]
+                        if weight_mask[index] else ""
+                    ),
+                    "weight_elasticnet_tuned_kg": (
+                        weight_candidate_oof["elasticnet_tuned"][index]
+                        if weight_mask[index] else ""
+                    ),
                 }
             )
 
     metadata: dict[str, Any] = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "dataset_csv": str(csv_path),
+        "dataset_csv": str(csv_path.relative_to(PROJECT)) if csv_path.is_relative_to(PROJECT) else csv_path.name,
         "dataset_csv_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
         "excluded_missing_image_count": missing_image_count,
         "image_count": len(rows),
         "group_count": group_count,
         "weight_label_count": int(weight_mask.sum()),
         "weight_group_count": weight_group_count,
+        "vision_candidate": {
+            "detector_model": settings.YOLO_MODEL_PATH,
+            "ultralytics_version": _package_version("ultralytics"),
+            "pose_complexity": settings.MP_MODEL_COMPLEXITY,
+            "segmentation_model": "MediaPipe Selfie Segmentation (unchanged)",
+            "extraction_images": len(rows),
+            "extraction_failures": 0,
+            "failure_rate": 0.0,
+            "mean_extraction_seconds": float(np.mean(extraction_seconds)),
+            "median_extraction_seconds": float(np.median(extraction_seconds)),
+            "total_extraction_seconds": float(np.sum(extraction_seconds)),
+        },
         "grouping_column": grouping_column,
         "grouping_rule": grouping_description,
+        "feature_version": FEATURE_VERSION,
+        "random_seed": None,
+        "split_method": "GroupKFold (deterministic; participant_id groups)",
+        "split_assignments": {
+            str(group): int(fold_assignments[np.flatnonzero(groups == group)[0]])
+            for group in sorted(set(groups))
+        },
         "outer_folds": outer_fold_count,
         "inner_folds_max": MAX_CV_FOLDS,
         "ridge_alpha_candidates": ALPHAS,
         "weight_model": {
             "type": "StandardScaler + Ridge",
             "alpha": 1.0,
+        },
+        "candidate_weight_models": {
+            "ridge_tuned": {
+                "type": "StandardScaler + Ridge",
+                "alpha_candidates": ALPHAS,
+                "tuning": "GroupKFold inside each outer training partition",
+            },
+            "elasticnet_tuned": {
+                "type": "StandardScaler + ElasticNet",
+                "alpha_candidates": [0.01, 0.1, 1.0],
+                "l1_ratio_candidates": [0.1, 0.5, 0.9],
+                "tuning": "GroupKFold inside each outer training partition",
+                "random_seed": 0,
+            },
         },
         "weight_height_feature": {
             "evaluation": "out-of-fold calibrated height",

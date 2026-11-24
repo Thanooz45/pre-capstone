@@ -30,6 +30,9 @@ training-cohort API.
 - Supports browsing, searching, correcting, adding, and deleting training
   cohort records through the web app. Dataset edits and feedback can trigger
   model retraining.
+- Offers an opt-in v2 visual-only upload path with front/side capture checks.
+  It still uses the existing per-image Ridge artifacts and averages two legacy
+  predictions; it is not a newly trained multi-view model.
 
 ## How estimation works
 
@@ -58,11 +61,29 @@ deep-learning models. The height geometry and final Ridge regressors are
 separate classical calculations/models; the project does not use a deep neural
 network to directly regress weight from pixels.
 
-The API's `confidence_score` is a weighted blend of YOLO detection confidence
-(60%) and MediaPipe nose visibility (40%). It is not a calibrated probability
-that a height or weight result is correct. The current Ridge weight estimator
-reports a fixed approximate +/- 8 kg range; this is not a statistically
-calibrated confidence interval.
+API V1 retains a legacy weighted blend of detector score and MediaPipe nose
+visibility. It is not a calibrated probability that a result is correct. V2
+reports detector, view, pose, segmentation, and camera-calibration status
+separately. Camera intrinsics are not calibrated: geometry uses configured
+field of view, camera height and distance, followed by a separate learned Ridge
+correction. The V2 weight interval is omitted because there is no validated
+uncertainty interval.
+
+V2 returns experimental pose-relative chest, waist, abdomen and hip image spans
+normalized by detected pixel height. Paired front/side requests also return
+side-to-front span ratios and a dimensionless elliptical cross-section proxy
+index. Features include validity and source metadata; invalid mask bands remain
+missing. They are not tape measurements, physical dimensions, body volume, or
+body composition, and are excluded from the deployed weight model pending
+participant-grouped ablation results.
+
+Version 2 upload checks limit each image to 12 MB and 30 megapixels and apply
+heuristics for blur, multiple people, likely edge truncation, pose visibility,
+segmentation quality, and likely front/side mismatch. These checks are not
+calibrated guarantees. Version 2 removes the uncalibrated weight range from its
+response. A+C is unavailable because no participant-grouped model has been
+trained with self-reported inputs; the application does not ask for those
+inputs.
 
 ## Technology
 
@@ -221,9 +242,11 @@ columns:
 | `weight_kg` | Measured weight label; blank values are permitted by the trainer |
 
 The trainer checks that image paths stay inside the dataset directory and that
-all referenced image files exist. The current repository snapshot has 152 CSV
-rows and 37 participant IDs, but only 151 referenced image files are present.
-Resolve the missing image or correct/remove its CSV row before retraining.
+all referenced image files exist. The current repository snapshot has 154 CSV
+rows and 38 participant IDs, with one referenced image missing. The audit also
+found 18 unknown view labels, 67 valid front/side pairs, and two unpaired
+captures. Resolve the missing image or correct/remove its CSV row before
+retraining.
 Training also requires at least five participant groups with usable data.
 
 To train and replace the default artifacts:
@@ -244,6 +267,36 @@ existing models, save a candidate elsewhere first if you want to compare it:
 ```bash
 python -m scripts.train_weight_model --model-output-dir ./candidate-models
 ```
+
+To run evaluation without replacing deployed model files, use:
+
+```bash
+cd backend
+.venv/bin/python ../paper/evaluate_grouped.py --exclude-missing-images
+```
+
+The evaluator writes participant fold assignments, per-image OOF predictions,
+feature/model metadata, and grouped metrics to `paper/evaluation_results/`.
+It also evaluates nested tuned-Ridge and Elastic Net candidates on the same
+participant folds. The current run reports 7.357 kg MAE for tuned Ridge and
+7.413 kg for Elastic Net, both worse than the fixed Ridge result, so the fixed
+Ridge remains the simplest tested weight model.
+On the current CSV snapshot (154 rows, 38 participant IDs, one missing image
+excluded), the latest run reported 4.092 cm height MAE and 7.278 kg weight MAE;
+the median baselines were 6.880 cm and 11.355 kg. These are grouped
+development estimates, not a locked external test result. The historical
+4.143/7.277 metrics used a different CSV snapshot and cannot establish that
+the model improved or regressed.
+
+To benchmark detector or pose candidates on the same participant folds, pass
+`--yolo-model` and/or `--pose-complexity 0|1|2`. The evaluator records per-image
+feature-extraction runtime and failure rate, and refuses to publish partial
+MAE if any image fails. On the active snapshot, YOLO26n produced height MAE
+4.065 cm and weight MAE 7.592 kg, versus the YOLOv8n baseline 4.092 cm and
+7.278 kg. It was not adopted. Its mean extraction time was 4.98 seconds per
+image in the CPU environment used for that run. Ultralytics licensing should
+be reviewed before distributing either model. See [BODYVISION_2_AUDIT.md](BODYVISION_2_AUDIT.md)
+for detailed status and remaining limitations.
 
 After training to the default directory while the API is already running,
 restart the backend to load the new artifacts. The API's background retraining
@@ -278,6 +331,8 @@ The backend exposes interactive request schemas at `/docs`.
 | `file_side` | Optional | Side-view image used to improve/average weight prediction |
 | `camera_height_cm` | Optional | Camera height; default 100, allowed 30–500 |
 | `distance_cm` | Optional | Subject distance; default 150, allowed 30–2000 |
+| `api_version` | Optional | `1` (default compatibility behavior) or `2` (quality-gated behavior) |
+| `prediction_mode` | Optional | For v2, `height` or `weight_a_only`; weight requires `file_side` |
 
 The response includes `estimated_height_cm`, `estimated_height_ft`,
 `geometric_height_cm`, YOLOv8 `detection_confidence_score`,
@@ -289,6 +344,10 @@ annotated result. The `pipeline` object includes the raw and calibrated height,
 front/side weight-model estimates, the eight model input factors, distinct
 detection/pose overlays, and base64-encoded foreground segmentation previews.
 Invalid images or failed person/pose detection return an error response.
+V2 responses include `model_version`, `feature_version`, `prediction_mode`,
+`features_used`, `quality_flags`, and an approximation notice. V2 A+C returns
+HTTP 501 until an appropriate grouped model is available. Version 2 image
+limits are 12 MB and 30 megapixels per upload.
 
 ## Tests and frontend build
 

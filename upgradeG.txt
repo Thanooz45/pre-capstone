@@ -1,0 +1,203 @@
+Paste this whole prompt into Codex in the project’s VS Code workspace. It includes your requested feature set and instructs Codex to implement the feasible changes in one continuous run.
+
+Implement the BodyVision 2.0 upgrade in this repository in one continuous work session. Inspect the actual codebase, then make the changes, run the relevant checks, fix issues caused by your work, and summarize the verified results. Do not stop after an audit, plan, or progress report.
+
+Use the repository as the source of truth. The project is described as React + Vite, FastAPI, YOLOv8n, MediaPipe Pose Lite, MediaPipe Selfie Segmentation, OpenCV geometry, Ridge height calibration, and Ridge weight regression. The reported baseline is height MAE 4.143 cm and weight MAE 7.277 kg from 37 participants and 151 images. Treat those figures as unverified until you inspect the data and evaluation code.
+
+## Execution requirements
+
+- First inspect the repository structure, relevant source files, dependencies, tests, data schemas, model artifacts, and evaluation scripts.
+- Then continue directly into implementation. Do not ask me to approve routine decisions or stop after producing a plan.
+- Preserve working features and existing endpoints where practical. Use the project’s existing patterns and make focused changes.
+- Do not fabricate data, participant IDs, metrics, or results.
+- If one requested component cannot be installed or run because of missing data, hardware, license, model weights, or compatibility, complete all other feasible work. Add an appropriate fallback or extension point and document the specific limitation.
+- Treat all performance improvements as unproven until demonstrated on participant-held-out data.
+- Do not leave code half-integrated: update callers, API schemas, UI, documentation, and configuration for changes you make.
+
+## Target capability changes
+
+| Capability | BodyVision 1.0 | BodyVision 2.0 target |
+|---|---|---|
+| Input | Front image, side optional | Front and side images |
+| Person detection | YOLOv8n | Benchmark YOLO26 against the existing detector; adopt only if runnable and supported by evaluation |
+| Pose | MediaPipe Lite | Benchmark MediaPipe Heavy or a suitable alternative |
+| Segmentation | MediaPipe Selfie Segmentation | Benchmark YOLO26-seg against the current pipeline |
+| Camera | Assumed field of view | Calibrated camera intrinsics when a valid calibration procedure and camera data are available |
+| Height | Pixel geometry + Ridge | Calibrated geometry plus correction model and quality checks |
+| Weight features | Existing 8 features | Expanded, versioned multi-view features |
+| Regression | Ridge | Benchmark CatBoost and appropriate regularized/ensemble alternatives against Ridge |
+| Reliability | Blended detection confidence | Separate quality checks for detection, pose, segmentation, calibration, and each measurement |
+| Output | Height and weight | Height, weight, supported body measurements, quality status, and uncertainty only when validated |
+
+Keep the current components available as baselines. Check dependency compatibility, model availability, runtime requirements, and licenses before adopting YOLO26, YOLO26-seg, MediaPipe Heavy, CatBoost, or other new packages. Do not replace a working component just because it appears in the target column. Benchmark feasible candidates on the same participant-separated evaluation data, including runtime and failure rate as well as prediction error.
+
+## Phase 1: Audit and reproduce the current baseline
+
+1. Locate the frontend, backend, current height and weight routes, model training and inference code, feature extraction, evaluation scripts, data files or schemas, model artifacts, configuration, and tests.
+2. Trace the existing end-to-end paths from image upload through detection, pose, segmentation, feature extraction, regression, and UI output.
+3. Determine exactly how the reported MAEs were produced: data rows, units, split strategy, participant IDs, feature list, preprocessing, model settings, failed predictions, and aggregation method.
+4. Check for leakage. All images and sessions belonging to one person must remain in the same train, validation, or test partition.
+5. Reproduce the baseline if the available data and scripts permit it. If they do not, record the specific missing data or reproducibility limitation and continue with the implementation.
+6. Preserve existing model files and routes as baseline behavior. Do not silently overwrite the only copy of a model artifact.
+
+## Phase 2: Fix and record evaluation
+
+- Implement participant-grouped holdout or GroupKFold evaluation using the repository’s actual participant identifier.
+- Add an automated assertion that fails if any participant appears in more than one partition.
+- Keep preprocessing, imputation, scaling, feature selection, calibration fitting, and hyperparameter tuning inside training folds.
+- Reserve a locked participant-level test set if the cohort size allows a useful estimate. If it is too small, use grouped cross-validation for development and clearly state that an independent final test is still needed.
+- Save split manifests, random seeds, feature schema/version, model settings, preprocessing configuration, participant counts, and metrics for reproducibility.
+- Compare all candidate models against the current baseline on identical held-out participants.
+- If participant identifiers are missing or ambiguous, do not invent them. Add the checks and evaluation structure supported by available data and explain the limitation.
+
+## Phase 3: Implement Priority 1 anthropometric features
+
+Support a front view and a side view using the existing image pipeline wherever feasible.
+
+### Front-view features
+
+Implement image-derived shoulder, chest, waist, and hip widths. Add upper-arm and thigh dimensions only where pose landmarks and segmentation support a consistent definition.
+
+### Side-view features
+
+Implement chest, waist, abdomen, and hip depths. Add upper-arm and thigh depth/dimensions only where the available landmarks and masks support them.
+
+### Normalization and provenance
+
+- Add height-normalized dimensions and body proportions only when a valid scale is available.
+- Record the scale source: calibrated camera, known-size reference, or user-provided height. Do not imply that an assumed FOV provides a reliable physical scale.
+- Version and document every feature’s name, definition, unit, source view, normalization method, and validity requirements.
+- Treat extracted widths and depths as image-derived proxies, not tape-measured circumferences.
+- Return per-feature validity and quality information. Do not fabricate values when landmarks, segmentation, view, or scale are unreliable.
+
+## Phase 4: Implement Priority 2 derived-feature experiments
+
+Add these as candidate features, not assumed improvements:
+
+- Shoulder-to-hip ratio.
+- Waist-to-height ratio.
+- Chest-to-waist ratio.
+- Front-to-side depth ratios.
+- Segment-wise volume proxies.
+- Estimated body-volume proxy.
+
+For every proxy, document its formula, units, required inputs, and assumptions. Use participant-grouped feature ablations to determine whether it helps held-out weight estimation. Do not label proxy volume as measured human body volume.
+
+## Phase 5: Add Priority 3 research extension points
+
+Consider the following research directions without making them prerequisites for a usable BodyVision 2.0 release:
+
+- 3D body-shape parameters.
+- SMPL or SMPL-X shape coefficients.
+- Multi-view body geometry.
+- Body-composition measurements using suitable additional sensors.
+
+Inspect whether the repository has compatible models, licenses, hardware, training data, and consent for these features. Implement them only if they can be integrated and validated responsibly in this session. Otherwise, document the missing requirements and leave a clear extension point. Complete Priority 1 and all feasible Priority 2 work regardless.
+
+## Phase 6: Upgrade camera and height estimation
+
+1. Inspect the actual camera assumptions and existing height code.
+2. Implement calibrated camera intrinsics or known-size reference calibration only if the capture path and available information support a real calibration procedure.
+3. Add geometry checks for camera pose, reference visibility, ground plane, person position, head/feet visibility, posture, and image truncation.
+4. Keep learned Ridge correction distinct from physical camera calibration. Do not call learned regression “calibrated geometry.”
+5. Compare the existing pixel-geometry/Ridge path with feasible geometry-plus-correction candidates using participant-grouped evaluation.
+6. If calibration inputs are absent or invalid, return an actionable error or fall back only to a clearly labeled supported path. Do not present an unsupported height as reliable.
+
+## Phase 7: Upgrade weight modeling and optional inputs
+
+Create separate prediction modes:
+
+- **Weight A-only:** multi-view image features.
+- **Weight A+C:** multi-view features plus available, optional, user-supplied information.
+
+Optional inputs may include self-reported height and age or age band if compatible with the current project. Keep them skippable, label their provenance, preserve missing values, and never infer sensitive characteristics from images. Add other sensitive inputs only if the existing study protocol and consent justify them.
+
+Benchmark, where available and technically appropriate:
+
+1. Training-fold median baseline.
+2. Existing Ridge model and expanded-feature Ridge.
+3. Suitable regularized linear alternatives.
+4. CatBoost only if it can be installed or is already available and the data size supports meaningful evaluation.
+5. Other constrained tree or ensemble models only when their dependency and evaluation cost are justified.
+
+For every candidate, report MAE, signed bias, error distribution, participant-level uncertainty where feasible, and processing/failure rate. Use the same participant splits. Prefer the simplest model with a repeatable held-out improvement. Do not claim A+C or CatBoost improves performance without evidence.
+
+Never use actual height as an input to height estimation. If height is an optional weight feature, identify the model as conditional on self-reported height and evaluate A-only separately.
+
+## Phase 8: Separate reliability and measurement-quality assessment
+
+Replace any single blended confidence score with separate, interpretable quality signals for:
+
+- Person detection and person count.
+- Front/side view validity and orientation.
+- Pose landmark confidence and plausibility.
+- Segmentation quality and body visibility.
+- Camera or reference calibration validity.
+- Each derived anthropometric feature.
+- Overall request acceptability.
+
+Define how each signal affects output: accept, retry, omit an individual feature, widen a validated uncertainty interval, or abstain. Use stable reason codes and actionable retry guidance. Do not label a raw model confidence as a probability of accuracy unless it has been calibrated and validated as one.
+
+## Phase 9: API and frontend integration
+
+### API
+
+Extend the actual FastAPI routes and schemas to accept front and side images, prediction mode, supported optional inputs, and calibration information where available. Preserve backward compatibility where practical; otherwise version the endpoint and update all callers.
+
+Validate image type, size, dimensions, count, and required inputs. Add clear error codes for applicable conditions such as missing person, multiple people, wrong view, body truncation, low pose/segmentation quality, invalid calibration, unsupported range, and inference failure.
+
+Responses should include, where implemented:
+
+- Height and/or weight estimate with units.
+- Supported body measurements with units and clear names.
+- Model version, feature version, and prediction mode.
+- Which optional inputs were used and their provenance.
+- Separate quality signals and relevant flags.
+- Uncertainty interval only if an interval method is implemented and independently evaluated.
+- Otherwise, an explicit statement that uncertainty is not calibrated.
+- An appropriate notice that image-based estimates are approximate.
+
+Do not log raw images or unnecessary personal data. Follow and document the project’s actual storage and deletion behavior.
+
+### Frontend
+
+Update the real React + Vite flows to:
+
+- Guide the user through front and side captures or uploads.
+- Show capture instructions and allow retakes/removal before submission.
+- Make optional user inputs skippable and explain their purpose.
+- Let the user select or understand A-only versus A+C mode.
+- Show which views and inputs were used.
+- Present only supported body measurements and explain that image-derived values are estimates/proxies.
+- Show quality failures with clear retry guidance rather than unsupported predictions.
+- Display uncertainty only if validated; otherwise do not imply precision beyond the point estimate.
+
+Keep the interface accessible and retain an upload alternative where practical.
+
+## Phase 10: Tests, integration, documentation, and final review
+
+- Add or update focused tests for participant leakage checks, feature calculations, missing or poor-quality inputs, API validation, prediction modes, and response schemas.
+- Run the existing relevant tests plus focused tests for changed behavior.
+- Run configured formatting, lint, type-check, and frontend/backend build commands when available.
+- Fix regressions caused by your changes and rerun the relevant checks.
+- Check that existing routes and user flows still work.
+- Review the final diff for accidental edits, dead code, broken imports, untracked artifacts, hard-coded personal data, and unsupported accuracy claims.
+- Update the project documentation with setup/use instructions, new capture requirements, feature definitions, model/evaluation commands, observed results, and known limitations.
+- Do not add fabricated test data that could be mistaken for actual project data. Synthetic fixtures are acceptable only when clearly marked as test fixtures.
+
+## MAE targets and claims
+
+The proposed research targets are height MAE **2.5–3.5 cm** and weight MAE **4.5–6 kg**, compared with the supplied but unverified baseline of 4.143 cm and 7.277 kg. These are hypotheses, not guarantees or acceptance promises. Report what the evaluation actually shows, including if performance does not improve or cannot be determined.
+
+Do not claim the system is clinically accurate, guaranteed, or a replacement for a scale/stadiometer. State the evaluated cohort size, participant-level split method, metrics, uncertainty, failure rate, and limitations.
+
+## Final response after implementation
+
+Do not finish with only a plan. Complete all feasible work, then report:
+
+1. Main backend, frontend, feature, and model changes.
+2. Which BodyVision 2.0 target components were implemented, benchmarked, or left as documented extension points.
+3. What baseline metrics and participant split were actually verified.
+4. Tests, lint/build checks run and their results.
+5. Any specific remaining blockers caused by missing data, models, hardware, licenses, or consent.
+6. Whether MAE improved, worsened, or could not be determined from actual held-out evaluation.

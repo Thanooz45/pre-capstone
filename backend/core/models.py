@@ -25,6 +25,24 @@ class PredictionPipelineDetails(BaseModel):
     feature_values: dict[str, float] = Field(
         ..., description="The eight values supplied to the weight regression model."
     )
+    side_feature_values: dict[str, float] | None = Field(
+        None, description="The legacy feature schema extracted from the side image, when supplied."
+    )
+    feature_metadata: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="Feature names, units, kinds, and proxy descriptions."
+    )
+    front_quality_details: dict[str, float | int | bool | str | None] | None = Field(
+        None, description="Front-view image and pose quality checks."
+    )
+    side_quality_details: dict[str, float | int | bool | str | None] | None = Field(
+        None, description="Side-view image and pose quality checks."
+    )
+    anthropometric_features: dict | None = Field(
+        None, description="Versioned image-derived front/side measurement proxies, with per-feature validity and provenance."
+    )
+    quality_assessment: dict | None = Field(
+        None, description="Separate detection, pose, segmentation, view, calibration, and request quality signals."
+    )
     detection_image_base64: str = Field(
         ..., description="JPEG with only the YOLOv8 person box and confidence overlay."
     )
@@ -65,10 +83,7 @@ class HeightResponse(BaseModel):
         ...,
         ge=0.0,
         le=1.0,
-        description=(
-            "Composite confidence score [0–1] derived from YOLOv8 "
-            "detection confidence (60%) and MediaPipe nose visibility (40%)."
-        ),
+        description="Legacy composite score retained for API V1 compatibility; not a probability of accuracy. V2 provides separate quality signals in pipeline.quality_assessment.",
         example=0.87,
     )
     pixel_height: int = Field(
@@ -103,7 +118,7 @@ class HeightResponse(BaseModel):
         ),
     )
     detection_confidence_score: float = Field(
-        ..., ge=0.0, le=1.0, description="YOLOv8 confidence for the selected person bounding box."
+        ..., ge=0.0, le=1.0, description="Raw detector score for the selected person bounding box; not an accuracy probability."
     )
     annotated_image_base64_side: str | None = Field(
         None,
@@ -113,12 +128,21 @@ class HeightResponse(BaseModel):
         False,
         description="True if bent knees are detected, indicating incorrect posture.",
     )
-    estimated_weight_kg: float = Field(..., description="Visual weight estimate in kilograms.", example=68.4)
-    estimated_weight_lb: float = Field(..., description="Visual weight estimate in pounds.", example=150.8)
-    weight_estimate_range_kg: list[float] = Field(
-        ..., description="Approximate uncertainty range in kg from the regression ensemble.", example=[61.2, 75.6]
+    estimated_weight_kg: float | None = Field(None, description="Visual weight estimate in kilograms, when requested.", example=68.4)
+    estimated_weight_lb: float | None = Field(None, description="Visual weight estimate in pounds, when requested.", example=150.8)
+    weight_estimate_range_kg: list[float] | None = Field(
+        None, description="Legacy uncalibrated range in kg. Version 2 omits it because it is not a validated prediction interval.", example=[61.2, 75.6]
     )
-    weight_model_available: bool = Field(True, description="Whether the locally trained weight model was used.")
+    weight_model_available: bool | None = Field(None, description="Whether the locally trained weight model was used.")
+    api_version: str | None = Field(None, description="Prediction response schema version.")
+    model_version: str | None = Field(None, description="Model artifact/version identifier.")
+    feature_version: str | None = Field(None, description="Feature schema version.")
+    prediction_mode: str | None = Field(None, description="Requested estimation mode.")
+    estimate_value: float | None = Field(None, description="Primary estimate selected by prediction mode.")
+    estimate_unit: str | None = Field(None, description="Unit for the primary estimate (cm or kg).")
+    features_used: list[str] = Field(default_factory=list, description="Feature groups used by the selected mode.")
+    quality_flags: list[str] = Field(default_factory=list, description="Quality and limitation flags for the result.")
+    notice: str | None = Field(None, description="Research-prototype notice for version 2 results.")
     pipeline: PredictionPipelineDetails = Field(
         ..., description="Intermediate values and visual outputs for the prediction pipeline."
     )

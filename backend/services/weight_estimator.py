@@ -21,6 +21,17 @@ FEATURE_NAMES = (
     "lower_body_width_ratio",
 )
 
+FEATURE_METADATA = {
+    "estimated_height_cm": {"unit": "cm", "kind": "learned_estimate", "description": "Learned height estimate supplied to the legacy weight regressor."},
+    "shoulder_width_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Shoulder landmark span divided by pixel height."},
+    "hip_width_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Hip landmark span divided by pixel height."},
+    "silhouette_fill_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Foreground pixels divided by detected person-box pixels."},
+    "silhouette_aspect_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Detected person-box width divided by height."},
+    "chest_width_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Silhouette width at 30% of box height, normalized by pixel height."},
+    "waist_width_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Silhouette width at 52% of box height, normalized by pixel height."},
+    "lower_body_width_ratio": {"unit": "ratio", "kind": "image_proxy", "description": "Silhouette width at 70% of box height, normalized by pixel height."},
+}
+
 _weight_model = None
 _height_model = None
 

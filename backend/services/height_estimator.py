@@ -57,6 +57,33 @@ _SEGMENTER_MODEL_URL = (
 )
 
 
+def _prominent_person_boxes(
+    boxes: list[tuple[int, int, int, int, float]], minimum_relative_area: float = 0.10
+) -> list[tuple[int, int, int, int, float]]:
+    """Discard tiny background/printed people relative to the main detection."""
+    if not boxes:
+        return []
+    areas = [max(0, x2 - x1) * max(0, y2 - y1) for x1, y1, x2, y2, _ in boxes]
+    largest_area = max(areas)
+    return [
+        box for box, area in zip(boxes, areas)
+        if area >= largest_area * minimum_relative_area
+    ]
+
+
+def _mask_band_span_ratio(mask: np.ndarray, relative_y: int, half_band: int, pixel_height: int) -> float | None:
+    """Median horizontal silhouette span near a row, normalized by pixel height."""
+    if mask.ndim != 2 or mask.size == 0 or pixel_height <= 0:
+        return None
+    start = max(0, relative_y - half_band)
+    stop = min(mask.shape[0], relative_y + half_band + 1)
+    rows = mask[start:stop]
+    widths = [int(xs[-1] - xs[0] + 1) for row in rows if (xs := np.flatnonzero(row)).size]
+    if len(widths) < max(1, min(3, rows.shape[0] // 2)):
+        return None
+    return round(float(np.median(widths)) / pixel_height, 6)
+
+
 def _ensure_model_asset(filename: str, url: str) -> Path:
     """Download a MediaPipe task model once, replacing partial files safely."""
     model_path = Path(__file__).resolve().parents[1] / ".ultralytics" / "mediapipe" / filename
@@ -231,7 +258,8 @@ def _weight_features(
     landmarks: dict,
     pixel_height: int,
     estimated_height_cm: float,
-) -> tuple[dict, str]:
+    expected_view: str | None = None,
+) -> tuple[dict, str, dict]:
     """Create scale-independent body-shape features for weight regression.
 
     A single image cannot directly observe body depth or composition.  These
@@ -256,7 +284,8 @@ def _weight_features(
     segmentation = segmentation_result.confidence_masks[0].numpy_view()[:, :, 0]
     person_mask = segmentation[y1:y2, x1:x2] > 0.5
     fill_ratio = float(person_mask.mean()) if person_mask.size else 0.0
-    preview_mask = _clean_segmentation_mask(segmentation, box, image_rgb)
+    clean_mask = _clean_segmentation_mask(segmentation, box, image_rgb)
+    preview_mask = clean_mask
     preview_scale = min(1.0, 960 / max(image_h, image_w))
     if preview_scale < 1.0:
         preview_size = (round(image_w * preview_scale), round(image_h * preview_scale))
@@ -279,10 +308,63 @@ def _weight_features(
         raise RuntimeError("Failed to encode the segmented person image.")
     segmented_image_base64 = base64.b64encode(segmented_buffer).decode("utf-8")
 
-    # The widths at the chest/waist/hip levels capture silhouette shape.
+    # Legacy features are retained unchanged for the deployed Ridge model.
     def row_width(relative_y: float) -> float:
         row = min(person_mask.shape[0] - 1, max(0, int(person_mask.shape[0] * relative_y)))
         return float(person_mask[row].sum()) / max(1, pixel_height)
+
+    # Experimental anthropometry proxies use pose-relative cross sections.
+    # These are normalized image spans, never physical cm measurements.
+    clean_crop = clean_mask[y1:y2, x1:x2]
+    shoulder_y = (landmarks["left_shoulder"][1] + landmarks["right_shoulder"][1]) / 2
+    hip_y = (landmarks["left_hip"][1] + landmarks["right_hip"][1]) / 2
+    torso_span = max(1.0, hip_y - shoulder_y)
+    levels = {
+        "chest_span_over_pixel_height": shoulder_y + torso_span * 0.28,
+        "waist_span_over_pixel_height": shoulder_y + torso_span * 0.68,
+        "abdomen_span_over_pixel_height": shoulder_y + torso_span * 0.82,
+        "hip_span_over_pixel_height": hip_y,
+    }
+
+    def band_ratio(image_y: float) -> float | None:
+        rel_y = int(round(image_y - y1))
+        half_band = max(2, round(box_h * 0.012))
+        return _mask_band_span_ratio(clean_crop, rel_y, half_band, pixel_height)
+
+    view_supported = expected_view in {"front", "side"}
+    anthropometric_measurements = {}
+    for name, image_y in levels.items():
+        value = band_ratio(image_y)
+        anthropometric_measurements[name] = {
+            "value": value,
+            "unit": "ratio",
+            "source_view": expected_view or "unverified",
+            "normalization": "pixel span / detected pixel height",
+            "relative_height_over_pixel_height": round((image_y - y1) / max(1, pixel_height), 6),
+            "valid": bool(view_supported and value is not None),
+            "reason": None if view_supported and value is not None else (
+                "view_not_verified" if not view_supported else "segmentation_missing_at_band"
+            ),
+        }
+    shoulder_ratio = round(shoulder_width / max(1, pixel_height), 6)
+    hip_landmark_ratio = round(hip_width / max(1, pixel_height), 6)
+    anthropometric_measurements["shoulder_landmark_span_over_pixel_height"] = {
+        "value": shoulder_ratio, "unit": "ratio", "source_view": expected_view or "unverified",
+        "normalization": "landmark span / detected pixel height", "valid": view_supported,
+        "reason": None if view_supported else "view_not_verified",
+    }
+    anthropometric_measurements["hip_landmark_span_over_pixel_height"] = {
+        "value": hip_landmark_ratio, "unit": "ratio", "source_view": expected_view or "unverified",
+        "normalization": "landmark span / detected pixel height", "valid": view_supported,
+        "reason": None if view_supported else "view_not_verified",
+    }
+    anthropometry = {
+        "schema_version": "anthropometry-proxy-v1",
+        "view": expected_view or "unverified",
+        "scale_source": "none; normalized in image space",
+        "notice": "Image-derived cross-section proxies; not tape measurements or physical dimensions.",
+        "measurements": anthropometric_measurements,
+    }
 
     return (
         {
@@ -296,6 +378,7 @@ def _weight_features(
             "lower_body_width_ratio": round(row_width(0.70), 6),
         },
         segmented_image_base64,
+        anthropometry,
     )
 
 
@@ -487,6 +570,8 @@ def estimate_height(
     camera_height_cm: float = settings.DEFAULT_CAMERA_HEIGHT_CM,
     distance_cm: float = settings.DEFAULT_DISTANCE_CM,
     height_calibrator: Callable[[dict], float] | None = None,
+    strict_quality_checks: bool = False,
+    expected_view: str | None = None,
 ) -> dict:
     """
     Run the full height-estimation pipeline on a single image file.
@@ -528,6 +613,14 @@ def estimate_height(
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     img_h, img_w = image_bgr.shape[:2]
     overlay = image_bgr.copy()  # work on a copy; original stays clean
+    blur_score = None
+
+    if strict_quality_checks:
+        if img_w < 240 or img_h < 320:
+            raise ValueError("Image resolution is too low. Upload a larger full-body image.")
+        blur_score = float(cv2.Laplacian(image_bgr, cv2.CV_64F).var())
+        if blur_score < 15.0:
+            raise ValueError("Image appears blurred. Retake it with the camera held steady and in focus.")
 
     logger.debug("Image loaded: %dx%d px", img_w, img_h)
 
@@ -553,9 +646,21 @@ def estimate_height(
             f"(YOLO confidence threshold: {settings.YOLO_CONF_THRESHOLD:.0%})"
         )
 
+    if strict_quality_checks and person_boxes:
+        # Ignore tiny people in posters/background screens while still
+        # rejecting another person who occupies a meaningful part of frame.
+        person_boxes = _prominent_person_boxes(person_boxes)
+    if strict_quality_checks and len(person_boxes) != 1:
+        raise ValueError("More than one person is visible. Retake the image with only one person in frame.")
+
     # Select the largest bounding box (dominant / closest person)
     person_boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
     x1, y1, x2, y2, det_conf = person_boxes[0]
+    if strict_quality_checks and (
+        x1 <= round(img_w * 0.01) or y1 <= round(img_h * 0.01)
+        or x2 >= round(img_w * 0.99) or y2 >= round(img_h * 0.99)
+    ):
+        raise ValueError("The person is cut off by the image edge. Retake with the entire head and feet visible.")
     logger.debug("Best person box: (%d,%d)→(%d,%d)  conf=%.2f", x1, y1, x2, y2, det_conf)
 
     # =========================================================
@@ -583,6 +688,9 @@ def estimate_height(
         )
 
     lms = pose_result.pose_landmarks[0]
+    pose_visibility = float(lms[0].visibility)
+    if strict_quality_checks and pose_visibility < 0.5:
+        raise ValueError("Pose confidence is low. Improve lighting and keep the full body unobstructed.")
 
     # MediaPipe landmark indices used:
     #   0  = Nose
@@ -673,9 +781,18 @@ def estimate_height(
     geometric_cm = _pixel_to_real_height(
         float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm
     )
-    weight_features, segmented_image_base64 = _weight_features(
-        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, geometric_cm
+    weight_features, segmented_image_base64, anthropometry = _weight_features(
+        image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, geometric_cm, expected_view
     )
+    if strict_quality_checks:
+        fill_ratio = weight_features["silhouette_fill_ratio"]
+        if not 0.04 <= fill_ratio <= 0.85:
+            raise ValueError("Person segmentation is unclear. Retake against a plain, well-lit background.")
+        shoulder_ratio = weight_features["shoulder_width_ratio"]
+        if expected_view == "front" and shoulder_ratio < 0.08:
+            raise ValueError("This looks like a side view. Upload a front-facing image or retake this view.")
+        if expected_view == "side" and shoulder_ratio > 0.24:
+            raise ValueError("This looks like a front view. Turn sideways and retake the side image.")
     estimated_cm = (
         float(height_calibrator(weight_features))
         if height_calibrator is not None
@@ -684,7 +801,6 @@ def estimate_height(
     feet, inches = _cm_to_feet_inches(estimated_cm)
 
     # Confidence: weighted blend of YOLOv8 box confidence + nose visibility
-    pose_visibility = float(lms[0].visibility)
     confidence = round(det_conf * 0.6 + pose_visibility * 0.4, 3)
 
     logger.info(
@@ -744,6 +860,21 @@ def estimate_height(
         "camera_height_cm":    camera_height_cm,
         "distance_cm":         distance_cm,
         "posture_warning":     bool(posture_warning),
+        "quality_details": {
+            "quality_gate_enabled": bool(strict_quality_checks),
+            "person_count": len(person_boxes),
+            "sharpness_laplacian_variance": round(blur_score, 2) if blur_score is not None else None,
+            "head_and_feet_inside_frame": bool(
+                x1 > round(img_w * 0.01) and y1 > round(img_h * 0.01)
+                and x2 < round(img_w * 0.99) and y2 < round(img_h * 0.99)
+            ),
+            "nose_pose_visibility": round(pose_visibility, 3),
+            "posture_warning": bool(posture_warning),
+            "segmentation_fill_ratio": weight_features["silhouette_fill_ratio"],
+            "expected_view": expected_view,
+            "shoulder_span_to_height_ratio": weight_features["shoulder_width_ratio"],
+        },
+        "anthropometric_features": anthropometry,
         "annotated_image_base64": annotated_b64,
         "_detection_image_base64": base64.b64encode(detection_buffer).decode("utf-8"),
         "_pose_image_base64": base64.b64encode(pose_buffer).decode("utf-8"),

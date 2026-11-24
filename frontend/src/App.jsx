@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Camera, Download, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, Trash2, X, GitBranch, ScanLine, PersonStanding, Layers, Calculator } from "lucide-react";
+import { Camera, Download, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, Trash2, X, GitBranch, ScanLine, PersonStanding, Layers, Calculator, LayoutDashboard, ClipboardList, HeartPulse, HelpCircle, Bell, Sun, PanelLeftClose, ShieldCheck } from "lucide-react";
 import { datasetImageUrl, deleteDatasetImage, deleteDatasetPerson, downloadTrainingDatasetCsv, getDatasetPeople, lookupDatasetPerson, predictBody, submitFeedback, updateDatasetPerson } from "./services/api";
 
 export default function App() {
   const [tab, setTab] = useState("predict"); // 'predict', 'add_data', or 'dataset'
   const [mode, setMode] = useState("height_weight"); // 'height_only' or 'height_weight'
+  const [v2Mode, setV2Mode] = useState("legacy");
   
   const [file, setFile] = useState(null);
   const [fileSide, setFileSide] = useState(null);
@@ -183,7 +184,7 @@ export default function App() {
       setError("Please upload a front-view image.");
       return;
     }
-    if (mode === "height_weight" && !fileSide) {
+    if ((mode === "height_weight" || v2Mode !== "legacy") && !fileSide) {
       setError("Please upload a side-view image for better weight prediction.");
       return;
     }
@@ -195,7 +196,17 @@ export default function App() {
     setShowFeedback(false);
     
     try {
-      const res = await predictBody(file, mode === "height_weight" ? fileSide : null, cameraHeight, distance);
+      const predictionMode = v2Mode === "legacy"
+        ? (mode === "height_only" ? "height" : "weight_a_only")
+        : v2Mode;
+      const res = await predictBody(
+        file,
+        mode === "height_weight" ? fileSide : null,
+        cameraHeight,
+        distance,
+        { apiVersion: v2Mode === "legacy" ? "1" : "2", predictionMode,
+        },
+      );
       setResult(res);
     } catch (err) {
       const data = err.response?.data;
@@ -364,30 +375,22 @@ export default function App() {
   }
 
   return (
-    <main>
-      <header>
-        <div className="brand">
-          <Ruler size={28} strokeWidth={2.5} />
-          Body<span>Vision</span>
-        </div>
-        <p>Premium Human Body Estimation</p>
-      </header>
-
-      <section className="hero">
-        <div>
-          <b>CAPSTONE PROJECT</b>
-          <h1>
-            Estimate measurements <em>instantly.</em>
-          </h1>
-          <p>
-            Upload a clear full-body photo to calculate height using camera geometry.
-            To find saved measurements, enter the person's saved name or upload the exact same image.
-          </p>
-        </div>
-        <Camera />
-      </section>
-
-      <div className="tabs" style={{ marginBottom: '10px' }}>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand"><span className="brand-mark"><Ruler size={22} /></span><span>Body<span className="brand-accent">Vision</span><small>MEASUREMENT STUDIO</small></span></div>
+        <div className="sidebar-section-label">WORKSPACE</div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+      <button className={`sidebar-link ${tab === 'predict' ? 'active' : ''}`} onClick={() => { setTab('predict'); setError(null); setResult(null); setFeedbackSubmitted(false); }}><LayoutDashboard size={19} /><span>Overview</span></button>
+      <button className={`sidebar-link ${tab === 'add_data' ? 'active' : ''}`} onClick={() => { setTab('add_data'); setMode('height_weight'); setError(null); setResult(null); setFeedbackSubmitted(false); setShowFeedback(false); }}><HeartPulse size={19} /><span>New estimate</span></button>
+      <button className={`sidebar-link ${tab === 'dataset' ? 'active' : ''}`} onClick={() => { setTab('dataset'); setDatasetSearch(""); setDatasetPage(0); setDatasetRefresh((value) => value + 1); setError(null); }}><ClipboardList size={19} /><span>Training dataset</span></button>
+        </nav>
+        <div className="sidebar-footer"><div className="sidebar-status"><ShieldCheck size={17}/><span><b>Research prototype</b><small>Computer vision workspace</small></span></div><div className="sidebar-collapse"><PanelLeftClose size={17}/> Collapse</div></div>
+      </aside>
+      <main className="main-content">
+        <div className="topbar"><div><div className="breadcrumb">BODYVISION <ChevronRight size={13}/> WORKSPACE</div><h1>{tab === "dataset" ? "Training dataset" : tab === "add_data" ? "Add training data" : "Measurement studio"}</h1></div><div className="topbar-actions"><button className="icon-action" aria-label="Help"><HelpCircle size={19}/></button><button className="icon-action" aria-label="Notifications"><Bell size={18}/></button><button className="icon-action" aria-label="Display settings"><Sun size={18}/></button><div className="avatar">BV</div></div></div>
+        <div className="page-content">
+      {tab === 'predict' && <section className="welcome-strip"><div><span className="eyebrow">BODY MEASUREMENT · COMPUTER VISION</span><h2>Estimate with confidence.</h2><p>Upload full-body views, review image quality, and inspect the measurement pipeline.</p></div><span className="welcome-icon"><Camera size={25}/></span></section>}
+      <div className="tabs primary-tabs" style={{ marginBottom: '10px' }}>
         <button 
           className={`tab ${tab === 'predict' ? 'active' : ''}`}
           onClick={() => { setTab('predict'); setError(null); setResult(null); setFeedbackSubmitted(false); }}
@@ -688,6 +691,25 @@ export default function App() {
               <h2><Settings2 /> Camera & Settings</h2>
 
               <label>
+                Prediction version
+                <select value={v2Mode} onChange={(event) => { setV2Mode(event.target.value); if (event.target.value !== "legacy") setMode("height_weight"); }}>
+                  <option value="legacy">Existing model (compatibility)</option>
+                  <option value="weight_a_only">BodyVision 2 · visual only</option>
+                  <option value="weight_a_plus_c" disabled>BodyVision 2 · A+C (model unavailable)</option>
+                </select>
+              </label>
+              {v2Mode !== "legacy" && (
+                <div className="lookup-note" role="note">
+                  This mode uses the existing visual-proportion Ridge model with two-view averaging. It is an experimental baseline wrapper, not a newly trained multi-view model; uncertainty is not calibrated.
+                </div>
+              )}
+              {v2Mode !== "legacy" && (
+                <div className="lookup-note" role="note">
+                  A+C is unavailable until a participant-grouped model is trained and evaluated with consented self-reported inputs. Height is never an input to height estimation.
+                </div>
+              )}
+
+              <label>
                 Existing person's name (optional)
                 <input
                   type="text"
@@ -790,9 +812,28 @@ export default function App() {
                     )}
                   </div>
 
-                  <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.95rem', color: '#6b7280' }}>
-                    <strong>Detection/pose score:</strong> {(result.confidence_score * 100).toFixed(1)}%
-                  </p>
+                  {result.api_version === "2"
+                    ? <QualityAssessmentSummary data={result.pipeline?.quality_assessment} />
+                    : <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '0.95rem', color: '#6b7280' }}><strong>Legacy composite detection/pose score:</strong> {(result.confidence_score * 100).toFixed(1)}%</p>}
+
+                  {result.model_version && (
+                    <div className="prediction-mode-card">
+                      <div>
+                        <span>Prediction mode</span>
+                        <strong>{result.prediction_mode === "weight_a_only" ? "Visual only · front + side" : "Height from image"}</strong>
+                      </div>
+                      <div>
+                        <span>Model / feature version</span>
+                        <strong>{result.model_version} · {result.feature_version}</strong>
+                      </div>
+                      <p>{result.notice}</p>
+                      {result.quality_flags?.length > 0 && (
+                        <small>Quality and reporting flags: {result.quality_flags.join(" · ")}</small>
+                      )}
+                    </div>
+                  )}
+
+                  <AnthropometrySummary data={result.pipeline?.anthropometric_features} />
 
                   <div className="height">
                     {result.estimated_height_cm} <small>cm</small>
@@ -805,9 +846,13 @@ export default function App() {
                       {result.estimated_weight_kg} <small>kg</small>
                       <br />
                       <span style={{ fontSize: '1.2rem', color: '#6b7280' }}>{result.estimated_weight_lb} lbs</span>
-                      <p style={{ fontSize: '0.9rem', marginTop: '4px' }}>
-                        Range: {result.weight_estimate_range_kg[0]} - {result.weight_estimate_range_kg[1]} kg
-                      </p>
+                      {result.weight_estimate_range_kg?.length === 2 ? (
+                        <p style={{ fontSize: '0.9rem', marginTop: '4px' }}>
+                          Uncalibrated range: {result.weight_estimate_range_kg[0]} - {result.weight_estimate_range_kg[1]} kg
+                        </p>
+                      ) : (
+                        <p style={{ fontSize: '0.9rem', marginTop: '4px' }}>Uncertainty interval is not calibrated.</p>
+                      )}
                     </div>
                   )}
 
@@ -1027,23 +1072,93 @@ export default function App() {
           onClose={closePipeline}
         />
       )}
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }
 
 const FEATURE_LABELS = [
-  ["estimated_height_cm", "Calibrated height", "cm", "Camera geometry corrected by the height model."],
-  ["shoulder_width_ratio", "Shoulder width", "ratio", "Shoulder landmark distance ÷ pixel height."],
-  ["hip_width_ratio", "Hip width", "ratio", "Hip landmark distance ÷ pixel height."],
-  ["silhouette_fill_ratio", "Silhouette fill", "ratio", "Foreground mask pixels ÷ pixels in the person box."],
-  ["silhouette_aspect_ratio", "Silhouette aspect", "ratio", "YOLO person-box width ÷ height."],
-  ["chest_width_ratio", "Chest width", "ratio", "Mask width at 30% of box height ÷ pixel height."],
-  ["waist_width_ratio", "Waist width", "ratio", "Mask width at 52% of box height ÷ pixel height."],
-  ["lower_body_width_ratio", "Lower-body width", "ratio", "Mask width at 70% of box height ÷ pixel height."],
+  ["estimated_height_cm", "Calibrated height feature", "cm", "Learned height estimate included by the existing weight model."],
+  ["shoulder_width_ratio", "Shoulder landmark ratio", "ratio", "Shoulder landmark span ÷ pixel height."],
+  ["hip_width_ratio", "Hip landmark ratio", "ratio", "Hip landmark span ÷ pixel height."],
+  ["silhouette_fill_ratio", "Silhouette fill ratio", "ratio", "Foreground mask pixels ÷ pixels in the detected person box."],
+  ["silhouette_aspect_ratio", "Person-box aspect ratio", "ratio", "Detected box width ÷ height."],
+  ["chest_width_ratio", "Upper torso silhouette ratio", "ratio", "Mask width at 30% of box height ÷ pixel height."],
+  ["waist_width_ratio", "Mid torso silhouette ratio", "ratio", "Mask width at 52% of box height ÷ pixel height."],
+  ["lower_body_width_ratio", "Lower-body silhouette ratio", "ratio", "Mask width at 70% of box height ÷ pixel height."],
 ];
+
+function QualityAssessmentSummary({ data }) {
+  if (!data) return null;
+  const rows = [
+    ["Person detection", data.front?.person_detection?.status, data.front?.person_detection?.raw_detector_score == null ? null : `Raw detector score ${(data.front.person_detection.raw_detector_score * 100).toFixed(1)}%`],
+    ["Front view", data.front?.view_validity?.status, data.front?.view_validity?.expected_view ? `Expected ${data.front.view_validity.expected_view}` : null],
+    ["Pose", data.front?.pose?.status, data.front?.pose?.nose_landmark_visibility == null ? null : `Nose landmark visibility ${data.front.pose.nose_landmark_visibility}`],
+    ["Segmentation", data.front?.segmentation?.status, data.front?.segmentation?.foreground_fill_ratio == null ? null : `Foreground fill ${data.front.segmentation.foreground_fill_ratio}`],
+    ["Camera calibration", data.camera_calibration?.status, data.camera_calibration?.height_correction],
+  ];
+  if (data.side) rows.splice(2, 0, ["Side view", data.side.view_validity?.status, data.side.view_validity?.expected_view ? `Expected ${data.side.view_validity.expected_view}` : null]);
+  return <section className="quality-card" aria-label="Separate image quality signals"><div className="quality-heading"><h3>Quality checks</h3><span>separate signals</span></div><div className="quality-grid">{rows.map(([label, status, detail]) => <div key={label}><span>{label}</span><strong className={status === "passed" ? "quality-passed" : "quality-review"}>{String(status ?? "not checked").replaceAll("_", " ")}</strong>{detail && <small>{detail}</small>}</div>)}</div><p>Raw detection scores are not probabilities of measurement accuracy. Camera intrinsics are not calibrated.</p></section>;
+}
+
+function AnthropometrySummary({ data }) {
+  if (!data?.measurements) return null;
+  const labels = {
+    chest_span_over_pixel_height: "Chest span / image height",
+    waist_span_over_pixel_height: "Waist span / image height",
+    abdomen_span_over_pixel_height: "Abdomen span / image height",
+    hip_span_over_pixel_height: "Hip span / image height",
+    shoulder_landmark_span_over_pixel_height: "Shoulder landmark span",
+    hip_landmark_span_over_pixel_height: "Hip landmark span",
+  };
+  const views = [
+    ["Front view", data.measurements],
+    ["Side view", data.side_view?.measurements],
+  ].filter(([, measurements]) => measurements);
+  const derived = data.derived?.derived_features ?? {};
+  const validDerived = Object.entries(derived).filter(([, feature]) => feature.valid && feature.value != null);
+  return (
+    <section className="anthropometry-card" aria-label="Experimental image-derived body proportions">
+      <div className="anthropometry-heading"><div><span className="eyebrow">EXPERIMENTAL · {data.schema_version}</span><h3>Image-derived proportions</h3></div><span className="proxy-badge">PROXY</span></div>
+      <p className="anthropometry-notice">These are normalized image spans, not physical measurements. They are excluded from the current weight model.</p>
+      {views.map(([title, measurements]) => {
+        const items = Object.entries(measurements).filter(([key, feature]) => labels[key] && feature.valid && feature.value != null);
+        return <div className="anthropometry-view" key={title}><h4>{title}</h4>{items.length ? <div className="anthropometry-grid">{items.map(([key, feature]) => <div key={key}><span>{labels[key]}</span><strong>{Number(feature.value).toFixed(3)} <small>{feature.unit}</small></strong></div>)}</div> : <p className="muted-copy">No valid bands for this view.</p>}</div>;
+      })}
+      {validDerived.length > 0 && <div className="anthropometry-view"><h4>Derived experiments</h4><div className="anthropometry-grid">{validDerived.map(([key, feature]) => <div key={key}><span>{key.replaceAll("_", " ")}</span><strong>{Number(feature.value).toFixed(3)} <small>{feature.unit}</small></strong></div>)}</div></div>}
+      <small className="anthropometry-footnote">Scale source: {data.scale_source ?? "not available"}. No uncertainty calibration is available.</small>
+    </section>
+  );
+}
+
+function FeatureValueList({ values, metadata }) {
+  if (!values) return <p className="pipeline-empty-note">No side-view feature values were returned.</p>;
+  return (
+    <div className="pipeline-features">
+      {FEATURE_LABELS.map(([key, label, defaultUnit, defaultDescription]) => {
+        const unit = metadata?.[key]?.unit || defaultUnit;
+        const description = metadata?.[key]?.description || defaultDescription;
+        return (
+        <div className="pipeline-feature" key={key}>
+          <div className="pipeline-feature-copy">
+            <span>{label}</span>
+            <small>{description}</small>
+          </div>
+          <strong>
+            {Number(values[key]).toFixed(key === "estimated_height_cm" ? 1 : 4)} <small>{unit}</small>
+          </strong>
+        </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function PredictionPipelineDialog({ result, preview, previewSide, onClose }) {
   const pipeline = result.pipeline;
+  const isV2 = result.api_version === "2";
+  const hasWeight = result.estimated_weight_kg != null;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -1076,12 +1191,38 @@ function PredictionPipelineDialog({ result, preview, previewSide, onClose }) {
           <div>
             <p className="dataset-eyebrow">PREDICTION DETAILS</p>
             <h2 id="pipeline-title"><GitBranch size={22} /> Pipeline</h2>
-            <p>See how the uploaded photo becomes the final measurements.</p>
+            <p>See which image processing steps and model outputs were used for this request.</p>
           </div>
           <button type="button" className="pipeline-close" onClick={onClose} aria-label="Close pipeline">
             <X size={20} />
           </button>
         </div>
+
+        <section className="pipeline-mode-summary" aria-label="Model and quality summary">
+          <div><span>Mode</span><strong>{result.prediction_mode || (hasWeight ? "Legacy height + weight" : "Legacy height")}</strong></div>
+          <div><span>Model</span><strong>{result.model_version || "Existing deployed models"}</strong></div>
+          <div><span>Feature schema</span><strong>{result.feature_version || "Legacy visual proportions"}</strong></div>
+          <div><span>Uncertainty</span><strong>{isV2 ? "Not calibrated" : "Legacy range is uncalibrated"}</strong></div>
+          {result.quality_flags?.length > 0 && (
+            <p>Flags: {result.quality_flags.join(" · ")}</p>
+          )}
+          {pipeline.front_quality_details && (
+            <p>
+              Front checks: {pipeline.front_quality_details.quality_gate_enabled ? "enabled" : "legacy checks"}
+              {` · ${pipeline.front_quality_details.person_count} person · pose visibility ${pipeline.front_quality_details.nose_pose_visibility}`}
+              {pipeline.front_quality_details.sharpness_laplacian_variance != null && ` · sharpness ${pipeline.front_quality_details.sharpness_laplacian_variance}`}
+            </p>
+          )}
+          {pipeline.side_quality_details && (
+            <p>
+              Side checks: {pipeline.side_quality_details.quality_gate_enabled ? "enabled" : "legacy checks"}
+              {` · ${pipeline.side_quality_details.person_count} person · pose visibility ${pipeline.side_quality_details.nose_pose_visibility}`}
+            </p>
+          )}
+          {(result.notice || (isV2 && hasWeight)) && (
+            <p>{result.notice || "Experimental visual-only baseline wrapper; image-derived ratios are proxies, not tape-measured circumferences."}</p>
+          )}
+        </section>
 
         <div className="pipeline-steps">
           <article className="pipeline-step">
@@ -1090,6 +1231,7 @@ function PredictionPipelineDialog({ result, preview, previewSide, onClose }) {
               <div><h3>Raw input</h3><p>Original image provided for analysis.</p></div>
             </div>
             {preview && <img className="pipeline-image" src={preview} alt="Uploaded front-view image" />}
+            {previewSide && <img className="pipeline-image pipeline-raw-side" src={previewSide} alt="Uploaded side-view image" />}
           </article>
 
           <article className="pipeline-step">
@@ -1182,34 +1324,38 @@ function PredictionPipelineDialog({ result, preview, previewSide, onClose }) {
           <article className="pipeline-step">
             <div className="pipeline-step-heading">
               <span className="pipeline-step-number">5</span>
-              <div><h3>Eight weight-model factors</h3><p>These front-image inputs are measured from pose landmarks and the segmented silhouette{previewSide ? "; the side image is measured independently too." : "."}</p></div>
+              <div><h3>{isV2 ? "Legacy visual-proportion features" : "Weight-model features"}</h3><p>Normalized image-derived proxies from pose landmarks and the silhouette. They are not physical lengths or tape-measured circumferences.</p></div>
             </div>
-            <div className="pipeline-features">
-              {FEATURE_LABELS.map(([key, label, unit, description]) => (
-                <div className="pipeline-feature" key={key}>
-                  <div className="pipeline-feature-copy">
-                    <span>{label}</span>
-                    <small>{description}</small>
-                  </div>
-                  <strong>{Number(pipeline.feature_values[key]).toFixed(key === "estimated_height_cm" ? 1 : 4)} <small>{unit}</small></strong>
-                </div>
-              ))}
+            <div className="pipeline-view-feature-block">
+              <h4>Front image</h4>
+              <FeatureValueList values={pipeline.feature_values} metadata={pipeline.feature_metadata} />
             </div>
+            {pipeline.side_feature_values && (
+              <div className="pipeline-view-feature-block">
+                <h4>Side image · same legacy feature schema</h4>
+                <FeatureValueList values={pipeline.side_feature_values} metadata={pipeline.feature_metadata} />
+              </div>
+            )}
           </article>
 
           <article className="pipeline-step">
             <div className="pipeline-step-heading">
               <span className="pipeline-step-number">6</span>
-              <div><h3><Calculator size={18} /> Calibrated measurements</h3><p>Camera geometry gives the raw height; the trained height model calibrates it. The weight model uses the eight factors above.</p></div>
+              <div><h3><Calculator size={18} /> Estimates returned</h3><p>Height uses pinhole camera geometry with a learned Ridge correction. Weight uses the existing Ridge artifact.</p></div>
             </div>
             <div className="pipeline-results">
               <div><span>Geometric height</span><strong>{pipeline.geometric_height_cm} cm</strong></div>
               <div><span>Calibrated height</span><strong>{pipeline.calibrated_height_cm} cm</strong></div>
-              <div><span>Front-image weight estimate</span><strong>{pipeline.front_weight_estimate_kg} kg</strong></div>
-              {pipeline.side_weight_estimate_kg != null && (
-                <div><span>Side-image weight estimate</span><strong>{pipeline.side_weight_estimate_kg} kg</strong></div>
+              {hasWeight && <div><span>Front-image weight estimate</span><strong>{pipeline.front_weight_estimate_kg} kg</strong></div>}
+              {hasWeight && pipeline.side_weight_estimate_kg != null && (
+                <div><span>Side-image legacy estimate</span><strong>{pipeline.side_weight_estimate_kg} kg</strong></div>
               )}
-              <div className="pipeline-final-result"><span>Final {pipeline.side_weight_estimate_kg != null ? "averaged " : "single-image "}weight prediction</span><strong>{result.estimated_weight_kg} kg</strong></div>
+              {hasWeight && (
+                <div className="pipeline-final-result">
+                  <span>Returned {pipeline.side_weight_estimate_kg != null ? "two-view average" : "weight estimate"}</span>
+                  <strong>{result.estimated_weight_kg} kg</strong>
+                </div>
+              )}
             </div>
           </article>
         </div>

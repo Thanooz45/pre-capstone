@@ -1,0 +1,86 @@
+Upgrade my existing BodyVision capstone project in phases. First inspect the repository and understand its current structure, evaluation script, height and weight endpoints, frontend, data format, and model artifacts. Preserve the current working behavior while making changes.
+
+The current project is described as React + Vite, FastAPI, YOLOv8n person detection, MediaPipe Pose Lite, MediaPipe Selfie Segmentation, OpenCV geometry, Ridge height calibration, and Ridge weight regression. The reported baseline is height MAE 4.143 cm and weight MAE 7.277 kg from 37 participants and 151 images. Treat these as unverified until the evaluation code and participant split reproduce them.
+
+## Phase 1: Audit and baseline
+
+1. Locate the evaluation script, dataset/schema, model training code, height/weight API routes, and frontend capture/result flow.
+2. Document how the existing metrics are calculated, including split method, participant IDs, features, preprocessing, model settings, and handling of failed predictions.
+3. Check for data leakage. All images and sessions belonging to one participant must stay in a single train, validation, or test partition.
+4. Reproduce the supplied baseline if possible. If not, document the precise reason and report the metrics you can reproduce.
+5. Add or update a concise project note describing the existing pipeline and baseline limitations.
+
+Do not replace or tune the current models until this audit is complete. Keep existing model artifacts and behavior available.
+
+## Phase 2: Correct evaluation and feature pipeline
+
+1. Add participant-grouped validation, such as GroupKFold or a suitable grouped holdout. Keep a locked participant-level test set where the dataset size permits.
+2. Fit preprocessing, imputation, scaling, feature selection, and hyperparameter tuning on training folds only.
+3. Version the feature schema and save split manifests, random seeds, model settings, and evaluation results so runs can be reproduced.
+4. Add leakage checks that fail if a participant appears in multiple partitions.
+5. Keep the current model as a baseline and compare all candidates on identical held-out participants.
+
+## Phase 3: BodyVision 2.0 features and model experiments
+
+Implement the upgrade behind a clear feature flag or versioned path so the current endpoints remain usable.
+
+### A: front/side image features
+
+Support separate front and side images. Extract candidate features only when person detection, pose, segmentation, and view-quality checks pass:
+
+- Front silhouette widths at shoulder, chest, waist, hip, upper-arm, and thigh levels.
+- Side silhouette depths at chest, abdomen/waist, hip, upper-arm, and thigh levels.
+- Height-normalized dimensions and ratios, front/side ratios, and landmark-based proportions where confidence is adequate.
+- Capture-quality metadata and explicit missingness/rejection reasons.
+
+Treat these as image-derived proxies, not tape-measured circumferences. Do not label a front width or side depth as a circumference.
+
+### C: optional user inputs
+
+Add optional, clearly labeled inputs such as self-reported height and age band. Users must be able to skip them. Record provenance and missing values explicitly. Do not infer sensitive attributes from images. Only add any sex-related physiological input if the existing project and study protocol justify it; keep it optional and explain its use.
+
+Provide separate prediction modes:
+
+- Height estimation: never use actual height as a model feature.
+- Weight A-only: visual features only.
+- Weight A+C: visual features plus available, consented optional inputs.
+
+### Model benchmarking
+
+For weight prediction, compare the existing Ridge model against a median baseline, regularized linear models, and carefully constrained tree models if the dataset size supports them. Compare A-only and A+C feature sets and run feature ablations. Do not assume a complex model is better. Keep all tuning participant-grouped and inside training folds.
+
+For height, compare the existing Ridge calibration with a documented geometric calibration approach where the capture setup supports it. Do not call a learned regression “camera calibration.”
+
+## Phase 4: API and frontend
+
+Update FastAPI request/response schemas with versioning as needed. Support front and side uploads, selected prediction mode, optional inputs, and calibration metadata. Validate file type, size, dimensions, number of people, view quality, and required fields.
+
+Responses should include:
+
+- Estimate and unit.
+- Model and feature version.
+- Prediction mode and features used.
+- Quality flags and actionable failure/abstention reason.
+- An uncertainty interval only after its calibration method has been implemented and evaluated.
+- A clear notice that the result is an approximation.
+
+Update the React + Vite flow to guide front and side capture, allow retakes, provide a non-camera upload path, make optional inputs skippable, and show which mode and inputs were used. If image or pose quality is inadequate, explain how to retry instead of presenting an unsupported estimate.
+
+Do not log raw images or unnecessary sensitive inputs. Follow the repository’s existing storage and deletion conventions, and document any new retention behavior.
+
+## Phase 5: Validation and reporting
+
+Report height and weight MAE, signed bias, error distribution, participant-level confidence intervals where feasible, failure/abstention rate, and interval coverage if uncertainty intervals are provided. Compare the current baseline and candidates on identical held-out participants. Include relevant subgroup and capture-quality analysis when sample sizes support it.
+
+The existing dataset is small: 37 participants and 151 images. Prioritize adding unique participants over collecting more images of the same people. Do not make clinical, guaranteed-accuracy, or scale-replacement claims.
+
+The suggested MAE ranges—height 2.5–3.5 cm and weight 4.5–6 kg—are experimental hypotheses only. Do not hard-code them as acceptance promises or claim them as achieved unless held-out evaluation supports that statement.
+
+## Working instructions
+
+- Before editing, summarize the repository structure and the audit findings.
+- Implement one phase at a time, keeping changes small and reviewable.
+- Follow existing project conventions and add focused tests for new evaluation, API, and feature behavior.
+- Run the relevant tests and report exactly what passed, what failed, and what remains incomplete.
+- Do not fabricate data, metrics, participant IDs, or successful results.
+- If a required feature depends on unavailable data or hardware, implement a clear, testable interface and document the limitation rather than pretending it works.

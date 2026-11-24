@@ -13,7 +13,7 @@ from typing import List
 class Settings:
     # ---- Project metadata ----
     PROJECT_NAME: str = "Human Height & Weight Estimator API"
-    VERSION: str = "1.1.0"
+    VERSION: str = "2.0.0"
 
     # ---- CORS ----
     CORS_ORIGINS: List[str] = field(default_factory=lambda: [
