@@ -136,6 +136,9 @@ async def predict_body(
             height_calibrator=calibrate_height,
         )
         features = result.pop("_weight_features")
+        segmented_image = result.pop("_segmented_image_base64")
+        detection_image = result.pop("_detection_image_base64")
+        pose_image = result.pop("_pose_image_base64")
         geometric_height = result["geometric_height_cm"]
         calibrated_height = result["estimated_height_cm"]
         
@@ -145,6 +148,10 @@ async def predict_body(
         
         # Estimate weight (Front)
         front_weight_est = estimate_weight(features)
+        side_weight_estimate = None
+        side_segmented_image = None
+        side_detection_image = None
+        side_pose_image = None
         
         # If side image provided, average the weight estimates
         if tmp_path_side:
@@ -155,8 +162,12 @@ async def predict_body(
                 height_calibrator=calibrate_height,
             )
             side_features = side_result.pop("_weight_features")
+            side_segmented_image = side_result.pop("_segmented_image_base64")
+            side_detection_image = side_result.pop("_detection_image_base64")
+            side_pose_image = side_result.pop("_pose_image_base64")
             side_features["estimated_height_cm"] = side_result["estimated_height_cm"]
             side_weight_est = estimate_weight(side_features)
+            side_weight_estimate = side_weight_est["estimated_weight_kg"]
             
             # Average the predictions
             front_kg = front_weight_est["estimated_weight_kg"]
@@ -177,6 +188,20 @@ async def predict_body(
         else:
             result.update(front_weight_est)
             result["annotated_image_base64_side"] = None
+
+        result["pipeline"] = {
+            "geometric_height_cm": geometric_height,
+            "calibrated_height_cm": calibrated_height,
+            "front_weight_estimate_kg": front_weight_est["estimated_weight_kg"],
+            "side_weight_estimate_kg": side_weight_estimate,
+            "feature_values": features,
+            "detection_image_base64": detection_image,
+            "pose_image_base64": pose_image,
+            "detection_image_base64_side": side_detection_image,
+            "pose_image_base64_side": side_pose_image,
+            "segmented_image_base64": segmented_image,
+            "segmented_image_base64_side": side_segmented_image,
+        }
 
         return JSONResponse(content=result)
 

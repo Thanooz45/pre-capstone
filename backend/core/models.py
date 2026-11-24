@@ -7,6 +7,44 @@ Defines the typed data contracts returned by the API.
 from pydantic import BaseModel, Field
 
 
+class PredictionPipelineDetails(BaseModel):
+    """Intermediate measurements and images shown in the prediction pipeline."""
+
+    geometric_height_cm: float = Field(
+        ..., description="Camera-geometry height before dataset calibration."
+    )
+    calibrated_height_cm: float = Field(
+        ..., description="Height after applying the trained calibration model."
+    )
+    front_weight_estimate_kg: float = Field(
+        ..., description="Weight model estimate from the front image."
+    )
+    side_weight_estimate_kg: float | None = Field(
+        None, description="Weight model estimate from the side image, when supplied."
+    )
+    feature_values: dict[str, float] = Field(
+        ..., description="The eight values supplied to the weight regression model."
+    )
+    detection_image_base64: str = Field(
+        ..., description="JPEG with only the YOLOv8 person box and confidence overlay."
+    )
+    pose_image_base64: str = Field(
+        ..., description="JPEG with MediaPipe pose joints, elbow/wrist labels, and height markers."
+    )
+    detection_image_base64_side: str | None = Field(
+        None, description="YOLOv8 detection view for the side image, when supplied."
+    )
+    pose_image_base64_side: str | None = Field(
+        None, description="MediaPipe pose view for the side image, when supplied."
+    )
+    segmented_image_base64: str = Field(
+        ..., description="PNG with the segmented person visible and background transparent."
+    )
+    segmented_image_base64_side: str | None = Field(
+        None, description="Transparent-background segmentation for the side image, when supplied."
+    )
+
+
 class HeightResponse(BaseModel):
     """Response payload for POST /api/predict-height."""
 
@@ -64,6 +102,9 @@ class HeightResponse(BaseModel):
             "and height label."
         ),
     )
+    detection_confidence_score: float = Field(
+        ..., ge=0.0, le=1.0, description="YOLOv8 confidence for the selected person bounding box."
+    )
     annotated_image_base64_side: str | None = Field(
         None,
         description="JPEG image encoded in base64 with overlays for the side view (if provided)."
@@ -78,6 +119,9 @@ class HeightResponse(BaseModel):
         ..., description="Approximate uncertainty range in kg from the regression ensemble.", example=[61.2, 75.6]
     )
     weight_model_available: bool = Field(True, description="Whether the locally trained weight model was used.")
+    pipeline: PredictionPipelineDetails = Field(
+        ..., description="Intermediate values and visual outputs for the prediction pipeline."
+    )
 
 
 class ErrorResponse(BaseModel):

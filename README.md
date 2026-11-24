@@ -22,6 +22,10 @@ training-cohort API.
 - Produces annotated images with the detected person box, pose landmarks,
   measurement line, and estimate. Result images can be opened larger for
   inspection.
+- After a prediction, the **View prediction pipeline** window shows the raw
+  image, separate YOLOv8 detection and MediaPipe pose views (including labeled
+  elbow and wrist landmarks), a cleaned person segmentation preview, all eight
+  weight-model factors, and geometric/calibrated measurement values.
 - Shows a posture warning when the detected knee angles suggest bent knees.
 - Supports browsing, searching, correcting, adding, and deleting training
   cohort records through the web app. Dataset edits and feedback can trigger
@@ -276,12 +280,15 @@ The backend exposes interactive request schemas at `/docs`.
 | `distance_cm` | Optional | Subject distance; default 150, allowed 30–2000 |
 
 The response includes `estimated_height_cm`, `estimated_height_ft`,
-`geometric_height_cm`, `estimated_weight_kg`, `estimated_weight_lb`,
+`geometric_height_cm`, YOLOv8 `detection_confidence_score`,
+`estimated_weight_kg`, `estimated_weight_lb`,
 `weight_estimate_range_kg`, `confidence_score`, `posture_warning`, camera
 measurements, the person bounding box, and the annotated image as a base64 JPEG.
 When a side image is supplied, `annotated_image_base64_side` contains its
-annotated result. Invalid images or failed person/pose detection return an
-error response.
+annotated result. The `pipeline` object includes the raw and calibrated height,
+front/side weight-model estimates, the eight model input factors, distinct
+detection/pose overlays, and base64-encoded foreground segmentation previews.
+Invalid images or failed person/pose detection return an error response.
 
 ## Tests and frontend build
 

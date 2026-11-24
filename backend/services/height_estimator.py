@@ -149,13 +149,89 @@ def _ensure_models_loaded() -> None:
         load_models()
 
 
+def _clean_segmentation_mask(
+    segmentation: np.ndarray,
+    box: tuple[int, int, int, int],
+    image_rgb: np.ndarray | None = None,
+) -> np.ndarray:
+    """Keep a clean, connected foreground mask within the detected person box."""
+    image_h, image_w = segmentation.shape
+    x1, y1, x2, y2 = box
+    box_w, box_h = max(1, x2 - x1), max(1, y2 - y1)
+    # Detector boxes can be tight around hands, hair, and feet. Leave enough
+    # room for the segmenter to retain those extremities.
+    padding_x = max(8, round(box_w * 0.10))
+    padding_y = max(8, round(box_h * 0.06))
+    x1 = max(0, x1 - padding_x)
+    y1 = max(0, y1 - padding_y)
+    x2 = min(image_w, x2 + padding_x)
+    y2 = min(image_h, y2 + padding_y)
+
+    # Use image color boundaries to refine MediaPipe's coarse matte, which can
+    # leave translucent halos around arms, hair, and trouser edges.
+    if image_rgb is not None and image_rgb.shape[:2] == segmentation.shape:
+        gc_mask = np.full(segmentation.shape, cv2.GC_BGD, dtype=np.uint8)
+        gc_mask[y1:y2, x1:x2] = cv2.GC_PR_BGD
+        roi_confidence = segmentation[y1:y2, x1:x2]
+        roi_mask = gc_mask[y1:y2, x1:x2]
+        roi_mask[roi_confidence >= 0.82] = cv2.GC_FGD
+        roi_mask[(roi_confidence >= 0.55) & (roi_confidence < 0.82)] = cv2.GC_PR_FGD
+        bg_model = np.zeros((1, 65), dtype=np.float64)
+        fg_model = np.zeros((1, 65), dtype=np.float64)
+        try:
+            cv2.grabCut(
+                cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR), gc_mask, None,
+                bg_model, fg_model, 3, cv2.GC_INIT_WITH_MASK,
+            )
+            refined = np.isin(gc_mask, (cv2.GC_FGD, cv2.GC_PR_FGD))
+            # GrabCut can mistake skin-colored hands and narrow wrists for
+            # background. Keep the segmenter's confident foreground as a
+            # hard prior while using GrabCut to reject uncertain outer halos.
+            mask = (refined | (segmentation >= 0.58)).astype(np.uint8)
+        except cv2.error:
+            pass
+
+    # Keep confident model foreground as a fallback if color refinement is
+    # unavailable.
+    mask = (segmentation >= 0.58).astype(np.uint8)
+    person_region = np.zeros_like(mask)
+    person_region[y1:y2, x1:x2] = 1
+    mask &= person_region
+
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+    )
+    # Close small holes left inside hands/forearms by local confidence dips.
+    flood = mask.copy()
+    flood_h, flood_w = flood.shape
+    flood_mask = np.zeros((flood_h + 2, flood_w + 2), dtype=np.uint8)
+    cv2.floodFill(flood, flood_mask, (0, 0), 1)
+    holes = (flood == 0).astype(np.uint8)
+    hole_count, hole_labels, hole_stats, _ = cv2.connectedComponentsWithStats(
+        holes, connectivity=8
+    )
+    max_hole_area = max(16, round(box_w * box_h * 0.005))
+    for hole_label in range(1, hole_count):
+        if hole_stats[hole_label, cv2.CC_STAT_AREA] <= max_hole_area:
+            mask[hole_labels == hole_label] = 1
+    component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        mask, connectivity=8
+    )
+    if component_count > 1:
+        largest_component = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        mask = (labels == largest_component).astype(np.uint8)
+    return mask.astype(bool)
+
+
 def _weight_features(
     image_rgb: np.ndarray,
     box: tuple[int, int, int, int],
     landmarks: dict,
     pixel_height: int,
     estimated_height_cm: float,
-) -> dict:
+) -> tuple[dict, str]:
     """Create scale-independent body-shape features for weight regression.
 
     A single image cannot directly observe body depth or composition.  These
@@ -164,6 +240,7 @@ def _weight_features(
     """
     x1, y1, x2, y2 = box
     box_w, box_h = max(1, x2 - x1), max(1, y2 - y1)
+    image_h, image_w = image_rgb.shape[:2]
 
     def distance(a: tuple[int, int], b: tuple[int, int]) -> float:
         return float(math.dist(a, b))
@@ -179,22 +256,47 @@ def _weight_features(
     segmentation = segmentation_result.confidence_masks[0].numpy_view()[:, :, 0]
     person_mask = segmentation[y1:y2, x1:x2] > 0.5
     fill_ratio = float(person_mask.mean()) if person_mask.size else 0.0
+    preview_mask = _clean_segmentation_mask(segmentation, box, image_rgb)
+    preview_scale = min(1.0, 960 / max(image_h, image_w))
+    if preview_scale < 1.0:
+        preview_size = (round(image_w * preview_scale), round(image_h * preview_scale))
+        preview_rgb = cv2.resize(image_rgb, preview_size, interpolation=cv2.INTER_AREA)
+        preview_mask = cv2.resize(
+            preview_mask.astype(np.uint8),
+            preview_size,
+            interpolation=cv2.INTER_NEAREST,
+        ).astype(bool)
+    else:
+        preview_rgb = image_rgb
+    segmented_rgba = cv2.cvtColor(preview_rgb, cv2.COLOR_RGB2BGRA)
+    # The refined mask keeps the body opaque and removes low-confidence
+    # background; lightly antialias only its silhouette edge.
+    alpha = cv2.GaussianBlur(preview_mask.astype(np.float32), (0, 0), sigmaX=0.45)
+    alpha[preview_mask] = np.maximum(alpha[preview_mask], 0.98)
+    segmented_rgba[:, :, 3] = (alpha * 255).astype(np.uint8)
+    encoded, segmented_buffer = cv2.imencode(".png", segmented_rgba)
+    if not encoded:
+        raise RuntimeError("Failed to encode the segmented person image.")
+    segmented_image_base64 = base64.b64encode(segmented_buffer).decode("utf-8")
 
     # The widths at the chest/waist/hip levels capture silhouette shape.
     def row_width(relative_y: float) -> float:
         row = min(person_mask.shape[0] - 1, max(0, int(person_mask.shape[0] * relative_y)))
         return float(person_mask[row].sum()) / max(1, pixel_height)
 
-    return {
-        "estimated_height_cm": round(float(estimated_height_cm), 4),
-        "shoulder_width_ratio": round(shoulder_width / pixel_height, 6),
-        "hip_width_ratio": round(hip_width / pixel_height, 6),
-        "silhouette_fill_ratio": round(fill_ratio, 6),
-        "silhouette_aspect_ratio": round(box_w / box_h, 6),
-        "chest_width_ratio": round(row_width(0.30), 6),
-        "waist_width_ratio": round(row_width(0.52), 6),
-        "lower_body_width_ratio": round(row_width(0.70), 6),
-    }
+    return (
+        {
+            "estimated_height_cm": round(float(estimated_height_cm), 4),
+            "shoulder_width_ratio": round(shoulder_width / pixel_height, 6),
+            "hip_width_ratio": round(hip_width / pixel_height, 6),
+            "silhouette_fill_ratio": round(fill_ratio, 6),
+            "silhouette_aspect_ratio": round(box_w / box_h, 6),
+            "chest_width_ratio": round(row_width(0.30), 6),
+            "waist_width_ratio": round(row_width(0.52), 6),
+            "lower_body_width_ratio": round(row_width(0.70), 6),
+        },
+        segmented_image_base64,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +373,27 @@ def _draw_overlays(
     """
     Draws all visual overlays directly onto `overlay` (in-place).
     """
-    # --- Green bounding box ---
+    _draw_detection_overlay(overlay, x1, y1, x2, y2, det_conf)
+    _draw_pose_overlay(
+        overlay,
+        landmarks,
+        head_top,
+        heel,
+        estimated_cm,
+        feet,
+        inches,
+    )
+
+
+def _draw_detection_overlay(
+    overlay: np.ndarray,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    det_conf: float,
+) -> None:
+    """Draw only the YOLOv8 person box and confidence."""
     cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 210, 0), 3)
     cv2.putText(
         overlay,
@@ -280,11 +402,25 @@ def _draw_overlays(
         cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 210, 0), 2, cv2.LINE_AA,
     )
 
-    # --- Full skeleton pose wireframe ---
+
+def _draw_pose_overlay(
+    overlay: np.ndarray,
+    landmarks: dict,
+    head_top: tuple[int, int],
+    heel: tuple[int, int],
+    estimated_cm: float,
+    feet: int,
+    inches: float,
+) -> None:
+    """Draw only MediaPipe pose landmarks and the height measurement."""
     skeleton_connections = [
         ('left_shoulder', 'right_shoulder'),
         ('left_shoulder', 'left_hip'),
         ('right_shoulder', 'right_hip'),
+        ('left_shoulder', 'left_elbow'),
+        ('right_shoulder', 'right_elbow'),
+        ('left_elbow', 'left_wrist'),
+        ('right_elbow', 'right_wrist'),
         ('left_hip', 'right_hip'),
         ('left_hip', 'left_knee'),
         ('right_hip', 'right_knee'),
@@ -302,7 +438,6 @@ def _draw_overlays(
             cv2.line(overlay, p1, p2, (0, 255, 255), 2, cv2.LINE_AA)
             cv2.circle(overlay, p1, 4, (0, 165, 255), -1, cv2.LINE_AA)
             cv2.circle(overlay, p2, 4, (0, 165, 255), -1, cv2.LINE_AA)
-
     # --- Highlight Y_top and Y_bottom ---
     mid_x = (head_top[0] + heel[0]) // 2
     # Red dot with horizontal marker line for Y_top
@@ -327,6 +462,21 @@ def _draw_overlays(
     # Foreground
     cv2.putText(overlay, label, (text_x, text_y),
                 cv2.FONT_HERSHEY_DUPLEX, 0.85, (255, 120, 30), 2, cv2.LINE_AA)
+
+    for name in ("left_elbow", "right_elbow", "left_wrist", "right_wrist"):
+        point = landmarks[name]
+        cv2.circle(overlay, point, 6, (255, 0, 255), -1, cv2.LINE_AA)
+        joint_label = name.replace("left_", "L ").replace("right_", "R ")
+        cv2.putText(
+            overlay,
+            joint_label,
+            (point[0] + 7, point[1] - 7),
+            cv2.FONT_HERSHEY_DUPLEX,
+            0.45,
+            (255, 0, 255),
+            1,
+            cv2.LINE_AA,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +606,10 @@ def estimate_height(
         'right_ear': lm_abs(lms[8]),
         'left_shoulder': lm_abs(lms[11]),
         'right_shoulder': lm_abs(lms[12]),
+        'left_elbow': lm_abs(lms[13]),
+        'right_elbow': lm_abs(lms[14]),
+        'left_wrist': lm_abs(lms[15]),
+        'right_wrist': lm_abs(lms[16]),
         'left_hip': lm_abs(lms[23]),
         'right_hip': lm_abs(lms[24]),
         'left_knee': lm_abs(lms[25]),
@@ -519,7 +673,7 @@ def estimate_height(
     geometric_cm = _pixel_to_real_height(
         float(y_top), float(y_bottom), img_h, distance_cm, camera_height_cm
     )
-    weight_features = _weight_features(
+    weight_features, segmented_image_base64 = _weight_features(
         image_rgb, (x1, y1, x2, y2), landmarks_dict, pixel_height, geometric_cm
     )
     estimated_cm = (
@@ -553,20 +707,37 @@ def estimate_height(
         inches=inches,
     )
 
-    # =========================================================
-    # STEP 6 — Encode annotated image → base64 JPEG
-    # =========================================================
     encode_params = [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY]
     success, buffer = cv2.imencode(".jpg", overlay, encode_params)
     if not success:
         raise RuntimeError("Failed to encode annotated image to JPEG.")
-
     annotated_b64 = base64.b64encode(buffer).decode("utf-8")
+
+    detection_overlay = image_bgr.copy()
+    _draw_detection_overlay(detection_overlay, x1, y1, x2, y2, det_conf)
+    success, detection_buffer = cv2.imencode(".jpg", detection_overlay, encode_params)
+    if not success:
+        raise RuntimeError("Failed to encode YOLOv8 detection image to JPEG.")
+
+    pose_overlay = image_bgr.copy()
+    _draw_pose_overlay(
+        pose_overlay,
+        landmarks_dict,
+        head_top,
+        heel,
+        estimated_cm,
+        feet,
+        inches,
+    )
+    success, pose_buffer = cv2.imencode(".jpg", pose_overlay, encode_params)
+    if not success:
+        raise RuntimeError("Failed to encode MediaPipe pose image to JPEG.")
 
     return {
         "estimated_height_cm": round(estimated_cm, 1),
         "estimated_height_ft": f"{feet}' {inches}\"",
         "geometric_height_cm": round(geometric_cm, 1),
+        "detection_confidence_score": round(det_conf, 3),
         "confidence_score":    confidence,
         "pixel_height":        pixel_height,
         "bounding_box":        {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
@@ -574,6 +745,9 @@ def estimate_height(
         "distance_cm":         distance_cm,
         "posture_warning":     bool(posture_warning),
         "annotated_image_base64": annotated_b64,
+        "_detection_image_base64": base64.b64encode(detection_buffer).decode("utf-8"),
+        "_pose_image_base64": base64.b64encode(pose_buffer).decode("utf-8"),
+        "_segmented_image_base64": segmented_image_base64,
         # Private implementation data used by the local training/inference
         # service. API routes remove it before returning a response.
         "_weight_features": weight_features,

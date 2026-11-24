@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Camera, Download, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Camera, Download, ImageUp, LoaderCircle, Ruler, Settings2, AlertTriangle, CheckCircle, UploadCloud, ChevronRight, Database, Search, UsersRound, Pencil, Save, Trash2, X, GitBranch, ScanLine, PersonStanding, Layers, Calculator } from "lucide-react";
 import { datasetImageUrl, deleteDatasetImage, deleteDatasetPerson, downloadTrainingDatasetCsv, getDatasetPeople, lookupDatasetPerson, predictBody, submitFeedback, updateDatasetPerson } from "./services/api";
 
 export default function App() {
@@ -21,6 +21,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [pipelineOpen, setPipelineOpen] = useState(false);
+  const closePipeline = useCallback(() => setPipelineOpen(false), []);
 
   // Feedback/Add Data State
   const [showFeedback, setShowFeedback] = useState(false);
@@ -188,6 +190,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPipelineOpen(false);
     setFeedbackSubmitted(false);
     setShowFeedback(false);
     
@@ -832,6 +835,13 @@ export default function App() {
                       </p>
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="button-secondary pipeline-open-button"
+                    onClick={() => setPipelineOpen(true)}
+                  >
+                    <GitBranch size={18} /> View prediction pipeline
+                  </button>
                 </>
               ) : (
                 <div className="empty">
@@ -1009,6 +1019,201 @@ export default function App() {
           </div>
         </div>
       )}
+      {pipelineOpen && result && tab === "predict" && (
+        <PredictionPipelineDialog
+          result={result}
+          preview={preview}
+          previewSide={previewSide}
+          onClose={closePipeline}
+        />
+      )}
     </main>
+  );
+}
+
+const FEATURE_LABELS = [
+  ["estimated_height_cm", "Calibrated height", "cm", "Camera geometry corrected by the height model."],
+  ["shoulder_width_ratio", "Shoulder width", "ratio", "Shoulder landmark distance ÷ pixel height."],
+  ["hip_width_ratio", "Hip width", "ratio", "Hip landmark distance ÷ pixel height."],
+  ["silhouette_fill_ratio", "Silhouette fill", "ratio", "Foreground mask pixels ÷ pixels in the person box."],
+  ["silhouette_aspect_ratio", "Silhouette aspect", "ratio", "YOLO person-box width ÷ height."],
+  ["chest_width_ratio", "Chest width", "ratio", "Mask width at 30% of box height ÷ pixel height."],
+  ["waist_width_ratio", "Waist width", "ratio", "Mask width at 52% of box height ÷ pixel height."],
+  ["lower_body_width_ratio", "Lower-body width", "ratio", "Mask width at 70% of box height ÷ pixel height."],
+];
+
+function PredictionPipelineDialog({ result, preview, previewSide, onClose }) {
+  const pipeline = result.pipeline;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="pipeline-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="pipeline-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pipeline-title"
+      >
+        <div className="pipeline-header">
+          <div>
+            <p className="dataset-eyebrow">PREDICTION DETAILS</p>
+            <h2 id="pipeline-title"><GitBranch size={22} /> Pipeline</h2>
+            <p>See how the uploaded photo becomes the final measurements.</p>
+          </div>
+          <button type="button" className="pipeline-close" onClick={onClose} aria-label="Close pipeline">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="pipeline-steps">
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">1</span>
+              <div><h3>Raw input</h3><p>Original image provided for analysis.</p></div>
+            </div>
+            {preview && <img className="pipeline-image" src={preview} alt="Uploaded front-view image" />}
+          </article>
+
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">2</span>
+              <div><h3><ScanLine size={18} /> YOLOv8 person detection</h3><p>The largest detected person is selected and outlined.</p></div>
+            </div>
+            <div className="pipeline-views">
+              <figure>
+                <figcaption>Front view · detection only</figcaption>
+                <img
+                  className="pipeline-image"
+                  src={`data:image/jpeg;base64,${pipeline.detection_image_base64}`}
+                  alt="YOLOv8 person bounding box without pose landmarks"
+                />
+              </figure>
+              {pipeline.detection_image_base64_side && (
+                <figure>
+                  <figcaption>Side view · detection only</figcaption>
+                  <img
+                    className="pipeline-image"
+                    src={`data:image/jpeg;base64,${pipeline.detection_image_base64_side}`}
+                    alt="YOLOv8 side-view person bounding box without pose landmarks"
+                  />
+                </figure>
+              )}
+            </div>
+            <div className="pipeline-metrics">
+              <span>YOLOv8 detection confidence <strong>{(result.detection_confidence_score * 100).toFixed(1)}%</strong></span>
+              <span>Bounding box <strong>{result.bounding_box.x2 - result.bounding_box.x1} × {result.bounding_box.y2 - result.bounding_box.y1} px</strong></span>
+            </div>
+          </article>
+
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">3</span>
+              <div><h3><PersonStanding size={19} /> MediaPipe Pose landmarks</h3><p>Pose landmarks mark shoulders, elbows, wrists, hips, knees, heels, and toes; the overlay also shows the pixel-height span.</p></div>
+            </div>
+            <div className="pipeline-views">
+              <figure>
+                <figcaption>Front view · pose landmarks</figcaption>
+                <img
+                  className="pipeline-image"
+                  src={`data:image/jpeg;base64,${pipeline.pose_image_base64}`}
+                  alt="MediaPipe pose skeleton with marked elbows, wrists, and height measurement"
+                />
+              </figure>
+              {pipeline.pose_image_base64_side && (
+                <figure>
+                  <figcaption>Side view · pose landmarks</figcaption>
+                  <img
+                    className="pipeline-image"
+                    src={`data:image/jpeg;base64,${pipeline.pose_image_base64_side}`}
+                    alt="MediaPipe side-view pose skeleton with marked elbows and wrists"
+                  />
+                </figure>
+              )}
+            </div>
+            <div className="pipeline-metrics">
+              <span>Head-to-ground span <strong>{result.pixel_height} px</strong></span>
+              <span>Combined detection/pose score <strong>{(result.confidence_score * 100).toFixed(1)}%</strong></span>
+              <span>Camera setup <strong>{result.camera_height_cm} cm high · {result.distance_cm} cm away</strong></span>
+            </div>
+          </article>
+
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">4</span>
+              <div><h3><Layers size={18} /> MediaPipe segmentation</h3><p>The person mask keeps the foreground; transparent pixels show the removed background.</p></div>
+            </div>
+            <div className="pipeline-segmentation-preview">
+              <img
+                src={`data:image/png;base64,${pipeline.segmented_image_base64}`}
+                alt="Person isolated from the background by MediaPipe segmentation"
+              />
+            </div>
+            {pipeline.segmented_image_base64_side && previewSide && (
+              <div className="pipeline-side-preview">
+                <p>Side-view segmentation</p>
+                <div className="pipeline-segmentation-preview">
+                  <img
+                    src={`data:image/png;base64,${pipeline.segmented_image_base64_side}`}
+                    alt="Side-view person isolated from the background"
+                  />
+                </div>
+              </div>
+            )}
+          </article>
+
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">5</span>
+              <div><h3>Eight weight-model factors</h3><p>These front-image inputs are measured from pose landmarks and the segmented silhouette{previewSide ? "; the side image is measured independently too." : "."}</p></div>
+            </div>
+            <div className="pipeline-features">
+              {FEATURE_LABELS.map(([key, label, unit, description]) => (
+                <div className="pipeline-feature" key={key}>
+                  <div className="pipeline-feature-copy">
+                    <span>{label}</span>
+                    <small>{description}</small>
+                  </div>
+                  <strong>{Number(pipeline.feature_values[key]).toFixed(key === "estimated_height_cm" ? 1 : 4)} <small>{unit}</small></strong>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="pipeline-step">
+            <div className="pipeline-step-heading">
+              <span className="pipeline-step-number">6</span>
+              <div><h3><Calculator size={18} /> Calibrated measurements</h3><p>Camera geometry gives the raw height; the trained height model calibrates it. The weight model uses the eight factors above.</p></div>
+            </div>
+            <div className="pipeline-results">
+              <div><span>Geometric height</span><strong>{pipeline.geometric_height_cm} cm</strong></div>
+              <div><span>Calibrated height</span><strong>{pipeline.calibrated_height_cm} cm</strong></div>
+              <div><span>Front-image weight estimate</span><strong>{pipeline.front_weight_estimate_kg} kg</strong></div>
+              {pipeline.side_weight_estimate_kg != null && (
+                <div><span>Side-image weight estimate</span><strong>{pipeline.side_weight_estimate_kg} kg</strong></div>
+              )}
+              <div className="pipeline-final-result"><span>Final {pipeline.side_weight_estimate_kg != null ? "averaged " : "single-image "}weight prediction</span><strong>{result.estimated_weight_kg} kg</strong></div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
   );
 }
